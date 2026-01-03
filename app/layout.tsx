@@ -2,7 +2,6 @@ import type { Metadata } from 'next';
 import { Noto_Sans } from 'next/font/google';
 import { Auth0Provider } from '@auth0/nextjs-auth0/client';
 import './globals.css';
-import { CompanyProvider } from '@/providers/company-provider';
 import { PeriodProvider } from '@/providers/period-provider';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { AppSidebar } from '@/components/layout/app-sidebar';
@@ -27,14 +26,12 @@ export default function RootLayout({
     <html lang="sv" className={notoSans.variable}>
       <body className="font-sans antialiased">
         <Auth0Provider>
-          <CompanyProvider>
-            <PeriodProvider>
-              <SidebarProvider>
-                <AppSidebar />
-                {children}
-              </SidebarProvider>
-            </PeriodProvider>
-          </CompanyProvider>
+          <PeriodProvider>
+            <SidebarProvider>
+              <AppSidebar />
+              {children}
+            </SidebarProvider>
+          </PeriodProvider>
         </Auth0Provider>
       </body>
     </html>

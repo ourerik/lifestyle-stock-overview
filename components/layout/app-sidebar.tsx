@@ -1,9 +1,10 @@
 'use client';
 
-import { Building2, LayoutDashboard, Package, ChevronDown, LogOut, User } from 'lucide-react';
+import { LayoutDashboard, Package, ChevronDown, LogOut, User } from 'lucide-react';
+import { usePathname, useRouter } from 'next/navigation';
 import { useUser } from '@auth0/nextjs-auth0/client';
-import { useCompany } from '@/providers/company-provider';
-import { COMPANY_LIST, type CompanyId } from '@/config/companies';
+import { COMPANY_LIST, COMPANIES, type CompanyId } from '@/config/companies';
+import { CompanyLogo } from '@/components/logos';
 import {
   Sidebar,
   SidebarContent,
@@ -24,8 +25,24 @@ import {
 } from '@/components/ui/dropdown-menu';
 
 export function AppSidebar() {
-  const { currentCompany, setCompany, companyConfig } = useCompany();
+  const pathname = usePathname();
+  const router = useRouter();
   const { user, isLoading } = useUser();
+
+  // Determine current company from URL
+  const pathSegments = pathname.split('/').filter(Boolean);
+  const companySlug = pathSegments[0];
+  const isCompanyPage = companySlug && companySlug in COMPANIES && companySlug !== 'all';
+  const currentCompany: CompanyId = isCompanyPage ? (companySlug as CompanyId) : 'all';
+  const companyConfig = COMPANIES[currentCompany];
+
+  const handleCompanySelect = (companyId: CompanyId) => {
+    if (companyId === 'all') {
+      router.push('/');
+    } else {
+      router.push(`/${companyId}`);
+    }
+  };
 
   return (
     <Sidebar collapsible="icon">
@@ -38,8 +55,8 @@ export function AppSidebar() {
                   size="lg"
                   className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
                 >
-                  <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                    <Building2 className="size-4" />
+                  <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-white">
+                    <CompanyLogo companyId={currentCompany} className="size-4" />
                   </div>
                   <div className="grid flex-1 text-left text-sm leading-tight">
                     <span className="truncate font-semibold">{companyConfig.name}</span>
@@ -57,10 +74,10 @@ export function AppSidebar() {
                 {COMPANY_LIST.map((company) => (
                   <DropdownMenuItem
                     key={company.id}
-                    onClick={() => setCompany(company.id as CompanyId)}
+                    onClick={() => handleCompanySelect(company.id as CompanyId)}
                     className={currentCompany === company.id ? 'bg-accent' : ''}
                   >
-                    <Building2 className="mr-2 h-4 w-4" />
+                    <CompanyLogo companyId={company.id as CompanyId} className="mr-2 h-4 w-4" />
                     {company.name}
                   </DropdownMenuItem>
                 ))}
@@ -75,17 +92,31 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem>
-                <SidebarMenuButton isActive tooltip="Dashboard">
-                  <LayoutDashboard className="h-4 w-4" />
-                  <span>Dashboard</span>
+                <SidebarMenuButton
+                  asChild
+                  isActive={!pathname.includes('/inventory')}
+                  tooltip="Dashboard"
+                >
+                  <a href={currentCompany === 'all' ? '/' : `/${currentCompany}`}>
+                    <LayoutDashboard className="h-4 w-4" />
+                    <span>Dashboard</span>
+                  </a>
                 </SidebarMenuButton>
               </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton tooltip="Lager">
-                  <Package className="h-4 w-4" />
-                  <span>Lager</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+              {isCompanyPage && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={pathname.includes('/inventory')}
+                    tooltip="Lager"
+                  >
+                    <a href={`/${currentCompany}/inventory`}>
+                      <Package className="h-4 w-4" />
+                      <span>Lager</span>
+                    </a>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

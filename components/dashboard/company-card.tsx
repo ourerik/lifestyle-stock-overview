@@ -1,10 +1,12 @@
 'use client';
 
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { formatCurrency, formatPercentChange } from '@/lib/utils/currency';
 import type { CompanySummary, ChannelSales } from '@/types';
 import { cn } from '@/lib/utils';
+import { CompanyLogo } from '@/components/logos';
+import { CompanyId } from '@/config/companies';
 
 interface CompanyCardProps {
   summary: CompanySummary;
@@ -86,8 +88,8 @@ export function CompanyCard({
 
   return (
     <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-lg font-semibold">{summary.companyName}</CardTitle>
+      <CardHeader className="pb-2 flex flex-row justify-end">
+        <CompanyLogo companyId={summary.companyId as CompanyId} className="h-5" />
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Summary metrics */}
