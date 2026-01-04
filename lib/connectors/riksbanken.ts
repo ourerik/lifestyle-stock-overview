@@ -1,8 +1,5 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
-import { join } from 'path'
-
-// Cache directory - one file per currency
-const CACHE_DIR = join(process.cwd(), 'data', 'exchange-rates')
+import { ElasticsearchConnector, type ESExchangeRate } from './elasticsearch'
+import type { Env } from '@/types'
 
 // Currency to Riksbank series ID mapping
 const CURRENCY_SERIES: Record<string, string> = {
@@ -12,88 +9,70 @@ const CURRENCY_SERIES: Record<string, string> = {
 }
 
 // In-memory cache: { "USD": { "2024-01-15": 10.45, ... }, ... }
-type CurrencyCache = Record<string, number>
-type RateCache = Record<string, CurrencyCache>
+type CurrencyCache = Map<string, number>
+type RateCache = Map<string, CurrencyCache>
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
 export class RiksbankenConnector {
-  private cache: RateCache = {}
+  private cache: RateCache = new Map()
   private baseUrl = 'https://api.riksbank.se/swea/v1'
   private loadedCurrencies = new Set<string>()
-  private dirtyCurrencies = new Set<string>()
+  private pendingRates: ESExchangeRate[] = []
+  private es: ElasticsearchConnector
 
-  private getCacheFilePath(currency: string): string {
-    return join(CACHE_DIR, `${currency}.json`)
+  constructor(env: Env) {
+    this.es = new ElasticsearchConnector(env)
   }
 
-  private loadCurrencyCache(currency: string): void {
+  private async loadCurrencyCache(currency: string): Promise<void> {
     if (this.loadedCurrencies.has(currency)) return
 
-    const filePath = this.getCacheFilePath(currency)
     try {
-      if (existsSync(filePath)) {
-        const data = readFileSync(filePath, 'utf-8')
-        this.cache[currency] = JSON.parse(data)
-        const count = Object.keys(this.cache[currency]).length
-        console.log(`[Riksbanken] Loaded ${count} dates for ${currency}`)
-      } else {
-        this.cache[currency] = {}
-      }
+      const rates = await this.es.fetchExchangeRates(currency)
+      this.cache.set(currency, rates)
+      console.log(`[Riksbanken] Loaded ${rates.size} dates for ${currency} from ES`)
     } catch (error) {
-      console.warn(`[Riksbanken] Failed to load ${currency} cache:`, error)
-      this.cache[currency] = {}
+      console.warn(`[Riksbanken] Failed to load ${currency} cache from ES:`, error)
+      this.cache.set(currency, new Map())
     }
     this.loadedCurrencies.add(currency)
   }
 
-  private saveCurrencyCache(currency: string): void {
-    if (!this.dirtyCurrencies.has(currency)) return
+  /**
+   * Save any pending rates to Elasticsearch
+   * Call this after processing is complete
+   */
+  async saveCache(): Promise<void> {
+    if (this.pendingRates.length === 0) return
 
     try {
-      if (!existsSync(CACHE_DIR)) {
-        mkdirSync(CACHE_DIR, { recursive: true })
-      }
-
-      // Sort by date before saving
-      const sorted: CurrencyCache = {}
-      const dates = Object.keys(this.cache[currency] || {}).sort()
-      for (const date of dates) {
-        sorted[date] = this.cache[currency][date]
-      }
-
-      const filePath = this.getCacheFilePath(currency)
-      writeFileSync(filePath, JSON.stringify(sorted, null, 2))
-      this.dirtyCurrencies.delete(currency)
-      console.log(`[Riksbanken] Saved ${currency} cache (${dates.length} dates)`)
+      const result = await this.es.saveExchangeRates(this.pendingRates)
+      console.log(`[Riksbanken] Saved ${result.indexed} rates to ES`)
+      this.pendingRates = []
     } catch (error) {
-      console.warn(`[Riksbanken] Failed to save ${currency} cache:`, error)
+      console.warn(`[Riksbanken] Failed to save rates to ES:`, error)
     }
   }
 
-  saveCache(): void {
-    for (const currency of this.dirtyCurrencies) {
-      this.saveCurrencyCache(currency)
+  private getCached(currency: string): CurrencyCache {
+    if (!this.cache.has(currency)) {
+      this.cache.set(currency, new Map())
     }
-  }
-
-  private getCached(currency: string, date: string): number | null {
-    this.loadCurrencyCache(currency)
-    return this.cache[currency]?.[date] ?? null
+    return this.cache.get(currency)!
   }
 
   private setCache(currency: string, date: string, rate: number): void {
-    this.loadCurrencyCache(currency)
-    if (!this.cache[currency]) {
-      this.cache[currency] = {}
+    const currencyCache = this.getCached(currency)
+    if (!currencyCache.has(date)) {
+      currencyCache.set(date, rate)
+      this.pendingRates.push({ currency, date, rate })
     }
-    this.cache[currency][date] = rate
-    this.dirtyCurrencies.add(currency)
   }
 
   private findNearestCachedDate(currency: string, targetDate: string): string | null {
-    this.loadCurrencyCache(currency)
-    const dates = Object.keys(this.cache[currency] || {}).sort()
+    const currencyCache = this.getCached(currency)
+    const dates = [...currencyCache.keys()].sort()
 
     // Find the latest date that is <= targetDate
     let nearest: string | null = null
@@ -108,8 +87,8 @@ export class RiksbankenConnector {
   }
 
   private getLatestCachedDate(currency: string): string | null {
-    this.loadCurrencyCache(currency)
-    const dates = Object.keys(this.cache[currency] || {}).sort()
+    const currencyCache = this.getCached(currency)
+    const dates = [...currencyCache.keys()].sort()
     return dates.length > 0 ? dates[dates.length - 1] : null
   }
 
@@ -170,16 +149,20 @@ export class RiksbankenConnector {
     // SEK to SEK is always 1
     if (currency === 'SEK') return 1
 
+    // Ensure cache is loaded from ES
+    await this.loadCurrencyCache(currency)
+
     // Check cache first
-    const cached = this.getCached(currency, date)
-    if (cached !== null) {
+    const currencyCache = this.getCached(currency)
+    const cached = currencyCache.get(date)
+    if (cached !== undefined) {
       return cached
     }
 
     // Date not in cache - try to find nearest bank day
     const nearest = this.findNearestCachedDate(currency, date)
     if (nearest) {
-      const rate = this.cache[currency][nearest]
+      const rate = currencyCache.get(nearest)!
       // Cache for the requested date too (weekend/holiday lookup)
       this.setCache(currency, date, rate)
       return rate
@@ -199,7 +182,7 @@ export class RiksbankenConnector {
     // Try again after fetching
     const nearestAfterFetch = this.findNearestCachedDate(currency, date)
     if (nearestAfterFetch) {
-      const rate = this.cache[currency][nearestAfterFetch]
+      const rate = currencyCache.get(nearestAfterFetch)!
       this.setCache(currency, date, rate)
       return rate
     }

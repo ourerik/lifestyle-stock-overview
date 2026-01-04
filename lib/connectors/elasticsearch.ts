@@ -1,6 +1,13 @@
 import type { Env } from '@/types'
 import type { StockItem } from '@/types/inventory'
 
+// Exchange rate document stored in Elasticsearch
+export interface ESExchangeRate {
+  currency: string
+  date: string
+  rate: number
+}
+
 export interface StockHistoryItem {
   date: string
   variantId: number
@@ -608,5 +615,102 @@ export class ElasticsearchConnector {
     }
 
     return allChanges
+  }
+
+  // ==================== Exchange Rates ====================
+
+  private readonly EXCHANGE_RATE_INDEX = 'exchange_rates'
+
+  /**
+   * Fetch all cached exchange rates for a currency
+   */
+  async fetchExchangeRates(currency: string): Promise<Map<string, number>> {
+    const rates = new Map<string, number>()
+
+    try {
+      let searchAfter: unknown[] | undefined
+
+      do {
+        const body: Record<string, unknown> = {
+          size: 10000,
+          query: {
+            term: { 'currency.keyword': currency }
+          },
+          sort: [{ date: 'asc' }],
+          _source: ['date', 'rate'],
+        }
+
+        if (searchAfter) {
+          body.search_after = searchAfter
+        }
+
+        const result = await this.request<{
+          hits: {
+            hits: Array<{
+              _source: { date: string; rate: number }
+              sort: unknown[]
+            }>
+          }
+        }>(`/${this.EXCHANGE_RATE_INDEX}/_search`, body)
+
+        const hits = result.hits.hits
+        if (hits.length === 0) break
+
+        for (const hit of hits) {
+          rates.set(hit._source.date, hit._source.rate)
+        }
+
+        searchAfter = hits[hits.length - 1].sort
+        if (hits.length < 10000) break
+      } while (true)
+    } catch (error) {
+      // Index might not exist yet
+      console.log(`[ES] Exchange rates index not found:`, error)
+    }
+
+    return rates
+  }
+
+  /**
+   * Save exchange rates to Elasticsearch using bulk indexing
+   */
+  async saveExchangeRates(rates: ESExchangeRate[]): Promise<{ indexed: number; errors: number }> {
+    if (rates.length === 0) {
+      return { indexed: 0, errors: 0 }
+    }
+
+    // Build bulk request body
+    const bulkBody = rates.flatMap(doc => [
+      JSON.stringify({ index: { _index: this.EXCHANGE_RATE_INDEX, _id: `${doc.currency}_${doc.date}` } }),
+      JSON.stringify(doc),
+    ]).join('\n') + '\n'
+
+    const response = await fetch(`${this.baseUrl}/_bulk`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `ApiKey ${this.apiKey}`,
+        'Content-Type': 'application/x-ndjson',
+      },
+      body: bulkBody,
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`Elasticsearch bulk request failed: ${response.status} - ${errorText}`)
+    }
+
+    const result = await response.json() as {
+      errors: boolean
+      items: Array<{ index: { status: number; error?: object } }>
+    }
+
+    const errorCount = result.items.filter(item => item.index.error).length
+    const indexedCount = result.items.filter(item => !item.index.error).length
+
+    if (result.errors) {
+      console.log(`[ES] Exchange rates bulk indexing completed with ${errorCount} errors`)
+    }
+
+    return { indexed: indexedCount, errors: errorCount }
   }
 }

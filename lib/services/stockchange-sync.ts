@@ -48,12 +48,12 @@ export class StockChangeSyncService {
     }
 
     // Transform to ES format
-    const riksbanken = new RiksbankenConnector()
+    const riksbanken = new RiksbankenConnector(this.env)
     const esDocuments = await this.transformLines(allLines, riksbanken)
     console.log(`[StockSync] Transformed to ${esDocuments.length} ES documents`)
 
-    // Save exchange rate cache
-    riksbanken.saveCache()
+    // Save exchange rate cache to Elasticsearch
+    await riksbanken.saveCache()
 
     // Bulk index to ES
     const { indexed, errors } = await esConnector.saveStockChanges(companyId, esDocuments)

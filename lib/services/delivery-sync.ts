@@ -52,12 +52,12 @@ export class DeliverySyncService {
     }
 
     // Transform Centra deliveries to ES format (one document per line)
-    const riksbanken = new RiksbankenConnector()
+    const riksbanken = new RiksbankenConnector(this.env)
     const esDocuments = await this.transformDeliveries(allDeliveries, riksbanken)
     console.log(`[Sync] Transformed to ${esDocuments.length} ES documents`)
 
-    // Save exchange rate cache to disk for future runs
-    riksbanken.saveCache()
+    // Save exchange rate cache to Elasticsearch
+    await riksbanken.saveCache()
 
     // Bulk index to ES
     const { indexed, errors } = await esConnector.savePurchaseDeliveries(companyId, esDocuments)

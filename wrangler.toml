@@ -1,0 +1,46 @@
+#:schema node_modules/wrangler/config-schema.json
+name = "lifestyle-stock-overview"
+compatibility_date = "2024-12-30"
+compatibility_flags = ["nodejs_compat"]
+main = ".open-next/worker.js"
+
+# Assets directory (static files)
+assets = { directory = ".open-next/assets", binding = "ASSETS" }
+
+# =============================================================================
+# ENVIRONMENT VARIABLES
+# =============================================================================
+# Non-sensitive values can be set here.
+# SECRETS must be set via Cloudflare Dashboard or `wrangler secret put <NAME>`
+# =============================================================================
+
+[vars]
+# Auth0
+APP_BASE_URL = "https://lifestyle-stock-overview.icy-bonus-6ebb.workers.dev"
+AUTH0_DOMAIN = "fourrun.eu.auth0.com"
+
+# Centra API base URLs (not secrets)
+SNEAKY_CENTRA_BASE_URL = "https://sneakysteve.centra.com/graphql"
+VARG_CENTRA_BASE_URL = "https://varg.centra.com/graphql"
+
+# =============================================================================
+# SECRETS (set via Dashboard or CLI)
+# =============================================================================
+# Run these commands to set secrets:
+#
+# wrangler secret put AUTH0_SECRET
+# wrangler secret put AUTH0_ISSUER_BASE_URL
+# wrangler secret put AUTH0_CLIENT_ID
+# wrangler secret put AUTH0_CLIENT_SECRET
+#
+# wrangler secret put SNEAKY_CENTRA_API_KEY
+# wrangler secret put SNEAKY_ZETTLE_CLIENT_ID
+# wrangler secret put SNEAKY_ZETTLE_API_KEY
+#
+# wrangler secret put VARG_CENTRA_API_KEY
+# wrangler secret put VARG_ZETTLE_CLIENT_ID
+# wrangler secret put VARG_ZETTLE_API_KEY
+#
+# wrangler secret put ELASTICSEARCH_URL
+# wrangler secret put ELASTICSEARCH_API_KEY
+# =============================================================================
