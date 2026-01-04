@@ -131,16 +131,44 @@ export function InventoryView({
     })
   }, [data, stockFilter])
 
-  // Calculate total inventory value from FIFO data
-  const totalFifoValue = useMemo(() => {
-    if (!data) return null
-    let total = 0
-    for (const product of data.products) {
-      if (product.fifoValue != null) {
-        total += product.fifoValue
+  // Get FIFO summary values and location stats
+  const locationStats = useMemo(() => {
+    if (!data) {
+      return {
+        warehouse: { quantity: 0, products: 0, value: null as number | null },
+        store: { quantity: 0, products: 0, value: null as number | null },
+        total: { value: null as number | null },
       }
     }
-    return total > 0 ? total : null
+
+    // Count products with warehouse/store stock
+    let warehouseProducts = 0
+    let storeProducts = 0
+    for (const product of data.products) {
+      if (product.totalQuantity > 0) warehouseProducts++
+      if (product.totalZettleQuantity > 0) storeProducts++
+    }
+
+    const fifoSummary = data.fifoSummary
+    const warehouseValue = fifoSummary?.totalValueByLocation?.warehouse ?? null
+    const storeValue = fifoSummary?.totalValueByLocation?.store ?? null
+    const totalValue = fifoSummary?.totalValue ?? null
+
+    return {
+      warehouse: {
+        quantity: data.summary.totalQuantity,
+        products: warehouseProducts,
+        value: warehouseValue,
+      },
+      store: {
+        quantity: data.summary.totalZettleQuantity,
+        products: storeProducts,
+        value: storeValue,
+      },
+      total: {
+        value: totalValue,
+      },
+    }
   }, [data])
 
   // Calculate folder counts and sort by count descending
@@ -175,20 +203,20 @@ export function InventoryView({
   return (
     <div className="space-y-6">
       {/* Summary cards */}
-      <div className="grid gap-4 md:grid-cols-4 lg:grid-cols-5">
-        <SummaryCard
-          title="Totalt antal"
-          value={data?.summary.totalQuantity}
-          subtitle={`${data?.summary.totalProducts || 0} produkter`}
-          icon={Package}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <LocationSummaryCard
+          title="Lager"
+          quantity={locationStats.warehouse.quantity}
+          products={locationStats.warehouse.products}
+          value={locationStats.warehouse.value}
           isLoading={isLoading}
         />
         {showZettle && (
-          <SummaryCard
+          <LocationSummaryCard
             title="Butik"
-            value={data?.summary.totalZettleQuantity}
-            subtitle="Zettle-lager"
-            icon={Package}
+            quantity={locationStats.store.quantity}
+            products={locationStats.store.products}
+            value={locationStats.store.value}
             isLoading={isLoading}
           />
         )}
@@ -207,14 +235,6 @@ export function InventoryView({
           icon={TrendingUp}
           isLoading={isLoading}
           variant="info"
-        />
-        <SummaryCard
-          title="Lagervärde"
-          value={totalFifoValue}
-          subtitle="SEK (FIFO)"
-          icon={TrendingUp}
-          isLoading={isLoading}
-          formatAsCurrency
         />
       </div>
 
@@ -354,6 +374,50 @@ export function InventoryView({
         </div>
       )}
     </div>
+  )
+}
+
+interface LocationSummaryCardProps {
+  title: string
+  quantity: number
+  products: number
+  value: number | null
+  isLoading: boolean
+}
+
+function LocationSummaryCard({
+  title,
+  quantity,
+  products,
+  value,
+  isLoading,
+}: LocationSummaryCardProps) {
+  return (
+    <Card>
+      <CardContent className="pt-6">
+        <div className="flex items-center justify-between">
+          <div className="space-y-1">
+            <p className="text-sm font-medium text-muted-foreground">{title}</p>
+            {isLoading ? (
+              <Skeleton className="h-8 w-24" />
+            ) : (
+              <>
+                <p className="text-2xl font-bold">{quantity.toLocaleString('sv-SE')} st</p>
+                <p className="text-xs text-muted-foreground">
+                  {products} produkter
+                  {value != null && (
+                    <span className="ml-2 font-semibold text-green-600 dark:text-green-400">
+                      · {formatCurrency(value)}
+                    </span>
+                  )}
+                </p>
+              </>
+            )}
+          </div>
+          <Package className="h-8 w-8 text-muted-foreground" />
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 

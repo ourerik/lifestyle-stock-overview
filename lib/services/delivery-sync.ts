@@ -56,6 +56,9 @@ export class DeliverySyncService {
     const esDocuments = await this.transformDeliveries(allDeliveries, riksbanken)
     console.log(`[Sync] Transformed to ${esDocuments.length} ES documents`)
 
+    // Save exchange rate cache to disk for future runs
+    riksbanken.saveCache()
+
     // Bulk index to ES
     const { indexed, errors } = await esConnector.savePurchaseDeliveries(companyId, esDocuments)
     console.log(`[Sync] Indexed: ${indexed}, Errors: ${errors}`)
@@ -172,6 +175,7 @@ export class DeliverySyncService {
       productVariantId: line.productVariant.id,
       productVariantNumber: line.productVariant.variantNumber || '',
       productSizeId: line.productSize.id,
+      sizeNumber: line.productSize.sizeNumber,
       quantity,
       purchaseOrderDelivery: {
         id: String(delivery.id),

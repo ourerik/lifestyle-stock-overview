@@ -8,7 +8,7 @@ import type {
   AggregatedProduct,
   AggregatedVariant,
   SizeStock,
-  InventoryData,
+  InventoryFetchResult,
   InventorySummary,
   ProductStatus,
 } from '@/types/inventory'
@@ -18,7 +18,7 @@ const LOW_STOCK_THRESHOLD = 5
 export class InventoryAggregator {
   constructor(private env: Env) {}
 
-  async fetchInventory(companyId: Exclude<CompanyId, 'all'>): Promise<InventoryData> {
+  async fetchInventory(companyId: Exclude<CompanyId, 'all'>): Promise<InventoryFetchResult> {
     // Fetch stock from Elasticsearch
     const esConnector = new ElasticsearchConnector(this.env)
     const { items: stockItems, lastUpdated } = await esConnector.fetchStock(companyId)
@@ -44,7 +44,7 @@ export class InventoryAggregator {
     // Calculate summary
     const summary = this.calculateSummary(products, lastUpdated)
 
-    return { products, folders, summary }
+    return { products, folders, summary, zettleInventory }
   }
 
   private async fetchZettleInventory(): Promise<ZettleInventoryItem[]> {

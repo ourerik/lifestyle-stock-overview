@@ -1,6 +1,6 @@
 'use client';
 
-import { LayoutDashboard, Package, ChevronDown, LogOut, User } from 'lucide-react';
+import { LayoutDashboard, Package, Truck, ChevronDown, LogOut, User } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useUser } from '@auth0/nextjs-auth0/client';
 import { COMPANY_LIST, COMPANIES, type CompanyId } from '@/config/companies';
@@ -104,18 +104,32 @@ export function AppSidebar() {
                 </SidebarMenuButton>
               </SidebarMenuItem>
               {isCompanyPage && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={pathname.includes('/inventory')}
-                    tooltip="Lager"
-                  >
-                    <a href={`/${currentCompany}/inventory`}>
-                      <Package className="h-4 w-4" />
-                      <span>Lager</span>
-                    </a>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
+                <>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={pathname.includes('/inventory')}
+                      tooltip="Lager"
+                    >
+                      <a href={`/${currentCompany}/inventory`}>
+                        <Package className="h-4 w-4" />
+                        <span>Lager</span>
+                      </a>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={pathname.includes('/deliveries')}
+                      tooltip="Inleveranser"
+                    >
+                      <a href={`/${currentCompany}/deliveries`}>
+                        <Truck className="h-4 w-4" />
+                        <span>Inleveranser</span>
+                      </a>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                </>
               )}
             </SidebarMenu>
           </SidebarGroupContent>

@@ -5,17 +5,37 @@
  * where oldest inventory is assumed to be sold first.
  */
 
-// A single inventory layer representing stock from one purchase
+// Source of inventory valuation data - indicates trustworthiness
+// 'delivery' = from purchase order delivery (most trusted, has full landed cost)
+// 'stockChange' = from stock change (less trusted, only has unit cost)
+// 'unknown' = no valuation data found (not trusted)
+export type InventoryLayerSource = 'delivery' | 'stockChange' | 'unknown'
+
+// A single inventory layer representing stock from one purchase or stock change
 export interface InventoryLayer {
-  purchaseOrderId: string
-  purchaseOrderDeliveryId: string
+  purchaseOrderId: string | null
+  purchaseOrderDeliveryId: string | null
+  stockChangeId: string | null  // For stock change source
   deliveryDate: string      // ISO date string
   unitCost: number          // Cost per unit at purchase time
   quantity: number          // Original quantity delivered
   remainingQuantity: number // Quantity still in stock after FIFO allocation
   layerValue: number        // remainingQuantity * unitCost
   ageInDays: number         // Days since delivery
-  supplierName: string
+  supplierName: string | null
+  source: InventoryLayerSource  // Indicates data trustworthiness
+}
+
+// Stock quantity by physical location
+export interface StockByLocation {
+  warehouse: number   // Centra warehouse stock
+  store: number       // Zettle store stock (only for companies with Zettle)
+}
+
+// Inventory value by physical location
+export interface ValueByLocation {
+  warehouse: number   // Value of warehouse stock
+  store: number       // Value of store stock
 }
 
 // FIFO valuation for a single size (EAN level)
@@ -23,7 +43,7 @@ export interface FifoSizeValuation {
   EAN: string
   size: string
   sizeNumber: string
-  currentStock: number           // Current physical quantity
+  currentStock: number           // Total stock (warehouse + store)
   totalValue: number             // Sum of all layer values
   weightedAverageCost: number    // totalValue / currentStock
   inventoryLayers: InventoryLayer[]
@@ -31,6 +51,16 @@ export interface FifoSizeValuation {
   newestPurchaseDate: string | null
   averageAgeInDays: number       // Weighted by quantity
   maxAgeInDays: number           // Age of oldest layer
+  // Source distribution for this size
+  primarySource: InventoryLayerSource  // The main source for this size's valuation
+  quantityBySource: {
+    delivery: number     // Items with purchase order delivery data
+    stockChange: number  // Items with only stock change data
+    unknown: number      // Items with no valuation data
+  }
+  // Location distribution for this size
+  stockByLocation: StockByLocation
+  valueByLocation: ValueByLocation
 }
 
 // FIFO valuation for a variant (color/style)
@@ -67,6 +97,13 @@ export interface ValueByAgeGroup {
   veryOld: number    // >365 days
 }
 
+// Distribution of items by valuation source
+export interface ItemsBySource {
+  delivery: number      // Items valued from purchase order deliveries (most trusted)
+  stockChange: number   // Items valued from stock changes (less trusted)
+  unknown: number       // Items with no valuation data (not trusted)
+}
+
 // Summary of FIFO valuation across all inventory
 export interface FifoSummary {
   totalValue: number
@@ -75,7 +112,12 @@ export interface FifoSummary {
   averageAgeInDays: number
   valueByAgeGroup: ValueByAgeGroup
   itemsByAgeGroup: ValueByAgeGroup
-  unknownCostItems: number  // Items without purchase data
+  unknownCostItems: number  // Items without purchase data (legacy, use itemsBySource.unknown)
+  itemsBySource: ItemsBySource  // Distribution by valuation source
+  valueBySource: ItemsBySource  // Value distribution by source
+  // Location-based totals (for companies with multiple locations like Zettle)
+  totalValueByLocation: ValueByLocation
+  totalStockByLocation: StockByLocation
   calculatedAt: string
 }
 
@@ -138,4 +180,31 @@ export function formatPeriod(dateString: string | null): string {
   const year = date.getFullYear().toString().slice(-2)
 
   return `${month} ${year}`
+}
+
+// Helper to get display text for source
+export function getSourceLabel(source: InventoryLayerSource): string {
+  switch (source) {
+    case 'delivery': return 'Inleverans'
+    case 'stockChange': return 'Lagerändring'
+    case 'unknown': return 'Okänt'
+  }
+}
+
+// Helper to get Tailwind color class for source (indicates trustworthiness)
+export function getSourceColorClass(source: InventoryLayerSource): string {
+  switch (source) {
+    case 'delivery': return 'text-green-600'      // Most trusted
+    case 'stockChange': return 'text-amber-600'   // Less trusted
+    case 'unknown': return 'text-red-600'         // Not trusted
+  }
+}
+
+// Helper to get background color class for source badge
+export function getSourceBadgeClass(source: InventoryLayerSource): string {
+  switch (source) {
+    case 'delivery': return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+    case 'stockChange': return 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400'
+    case 'unknown': return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
+  }
 }

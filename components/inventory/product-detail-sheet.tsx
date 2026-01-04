@@ -28,7 +28,7 @@ import { StockHistoryChart } from './stock-history-chart'
 import type { AggregatedProduct } from '@/types/inventory'
 import type { CompanyId } from '@/config/companies'
 import type { FifoProductValuation } from '@/types/fifo'
-import { formatCurrency, formatPeriod, getAgeColorClass } from '@/types/fifo'
+import { formatCurrency, formatPeriod, getAgeColorClass, getSourceLabel, getSourceColorClass } from '@/types/fifo'
 
 interface ProductDetailSheetProps {
   product: AggregatedProduct | null
@@ -221,11 +221,32 @@ export function ProductDetailSheet({
               {fifoLoading ? (
                 <div className="text-lg text-muted-foreground">...</div>
               ) : fifoData ? (
-                <div className="text-lg font-bold">{formatCurrency(fifoData.totalValue)}</div>
+                <>
+                  <div className="text-lg font-bold">{formatCurrency(fifoData.totalValue)}</div>
+                  {showZettle && fifoData.variants.length > 0 && (
+                    <div className="text-[10px] text-muted-foreground mt-0.5">
+                      {(() => {
+                        // Calculate location values from variants/sizes
+                        let warehouseVal = 0
+                        let storeVal = 0
+                        for (const v of fifoData.variants) {
+                          for (const s of v.sizes) {
+                            warehouseVal += s.valueByLocation?.warehouse ?? 0
+                            storeVal += s.valueByLocation?.store ?? 0
+                          }
+                        }
+                        if (warehouseVal > 0 || storeVal > 0) {
+                          return `${formatCurrency(warehouseVal)} / ${formatCurrency(storeVal)}`
+                        }
+                        return null
+                      })()}
+                    </div>
+                  )}
+                </>
               ) : (
                 <div className="text-lg text-muted-foreground">-</div>
               )}
-              <div className="text-xs text-muted-foreground">Lagervärde</div>
+              <div className="text-xs text-muted-foreground">Lagervärde{showZettle ? ' (lager/butik)' : ''}</div>
             </div>
             <div className="text-center p-3 bg-muted/50 rounded-lg">
               {fifoLoading ? (
@@ -291,9 +312,21 @@ export function ProductDetailSheet({
                     const variantFifo = getVariantFifo(variant.variantId)
                     if (!variantFifo) return null
                     const oldestDate = getVariantOldestDate(variant.variantId)
+                    // Calculate variant-level location values
+                    let warehouseVal = 0
+                    let storeVal = 0
+                    for (const s of variantFifo.sizes) {
+                      warehouseVal += s.valueByLocation?.warehouse ?? 0
+                      storeVal += s.valueByLocation?.store ?? 0
+                    }
                     return (
                       <div className="text-right ml-4 border-l pl-4">
                         <div className="text-sm font-medium">{formatCurrency(variantFifo.totalValue)}</div>
+                        {showZettle && (warehouseVal > 0 || storeVal > 0) && (
+                          <div className="text-[10px] text-muted-foreground">
+                            {formatCurrency(warehouseVal)} / {formatCurrency(storeVal)}
+                          </div>
+                        )}
                         <div className={`text-xs ${getAgeColorClass(variantFifo.maxAgeInDays)}`}>
                           {formatPeriod(oldestDate)}
                         </div>
@@ -372,7 +405,14 @@ export function ProductDetailSheet({
                             return (
                               <TableCell key={size.EAN} className="text-center text-xs">
                                 {sizeFifo && sizeFifo.totalValue > 0 ? (
-                                  <span>{formatCurrency(sizeFifo.totalValue)}</span>
+                                  <>
+                                    <div>{formatCurrency(sizeFifo.totalValue)}</div>
+                                    {showZettle && sizeFifo.valueByLocation && (sizeFifo.valueByLocation.warehouse > 0 || sizeFifo.valueByLocation.store > 0) && (
+                                      <div className="text-[9px] text-muted-foreground">
+                                        {formatCurrency(sizeFifo.valueByLocation.warehouse)}/{formatCurrency(sizeFifo.valueByLocation.store)}
+                                      </div>
+                                    )}
+                                  </>
                                 ) : (
                                   <span className="text-muted-foreground">-</span>
                                 )}
@@ -395,6 +435,34 @@ export function ProductDetailSheet({
                                   </span>
                                 ) : (
                                   <span className="text-muted-foreground">-</span>
+                                )}
+                              </TableCell>
+                            )
+                          })}
+                        </TableRow>
+                      )}
+                      {/* FIFO source row - shows data trustworthiness */}
+                      {fifoData && (
+                        <TableRow>
+                          <TableCell className="font-medium">Källa</TableCell>
+                          {variant.sizes.map(size => {
+                            const sizeFifo = getSizeFifo(size.EAN)
+                            if (!sizeFifo) {
+                              return (
+                                <TableCell key={size.EAN} className="text-center text-xs">
+                                  <span className="text-muted-foreground">-</span>
+                                </TableCell>
+                              )
+                            }
+                            return (
+                              <TableCell key={size.EAN} className="text-center text-xs">
+                                <span className={getSourceColorClass(sizeFifo.primarySource)}>
+                                  {getSourceLabel(sizeFifo.primarySource)}
+                                </span>
+                                {sizeFifo.quantityBySource.unknown > 0 && (
+                                  <div className="text-red-500 text-[10px]">
+                                    ({sizeFifo.quantityBySource.unknown} okänt)
+                                  </div>
                                 )}
                               </TableCell>
                             )

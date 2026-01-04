@@ -1,4 +1,4 @@
-import { ElasticsearchConnector, type ESPurchaseDelivery } from '@/lib/connectors/elasticsearch'
+import { ElasticsearchConnector, type ESPurchaseDelivery, type ESStockChange } from '@/lib/connectors/elasticsearch'
 import type { CompanyId } from '@/config/companies'
 import type { Env } from '@/types'
 import type { StockItem } from '@/types/inventory'
@@ -10,6 +10,10 @@ import type {
   FifoSummary,
   InventoryLayer,
   ValueByAgeGroup,
+  ItemsBySource,
+  InventoryLayerSource,
+  StockByLocation,
+  ValueByLocation,
 } from '@/types/fifo'
 import { getAgeClassification } from '@/types/fifo'
 
@@ -18,45 +22,86 @@ export class FifoCalculator {
 
   /**
    * Calculate FIFO valuation for all inventory
+   * Priority: 1) Purchase deliveries (most trusted), 2) Stock changes (less trusted), 3) Unknown
+   * @param companyId - Company to calculate for
+   * @param zettleInventory - Optional map of EAN -> store quantity (for companies with Zettle)
    */
-  async calculateValuation(companyId: Exclude<CompanyId, 'all'>): Promise<FifoValuationData> {
+  async calculateValuation(
+    companyId: Exclude<CompanyId, 'all'>,
+    zettleInventory?: Map<string, number>
+  ): Promise<FifoValuationData> {
     const esConnector = new ElasticsearchConnector(this.env)
 
     // Fetch current stock
     const { items: stockItems } = await esConnector.fetchStock(companyId)
     console.log(`[FIFO] Loaded ${stockItems.length} stock items`)
 
-    // Fetch all purchase deliveries (sorted oldest first)
+    // Fetch all purchase deliveries (sorted oldest first) - PRIMARY SOURCE
     const deliveries = await esConnector.fetchPurchaseDeliveries(companyId)
     console.log(`[FIFO] Loaded ${deliveries.length} purchase deliveries`)
 
-    // Group deliveries by EAN for quick lookup
+    // Fetch all stock changes (sorted oldest first) - FALLBACK SOURCE
+    const stockChanges = await esConnector.fetchStockChanges(companyId)
+    console.log(`[FIFO] Loaded ${stockChanges.length} stock changes`)
+
+    if (zettleInventory) {
+      console.log(`[FIFO] Zettle inventory provided with ${zettleInventory.size} items`)
+    }
+
+    // Group both sources by EAN for quick lookup
     const deliveriesByEAN = this.groupDeliveriesByEAN(deliveries)
+    const stockChangesByEAN = this.groupStockChangesByEAN(stockChanges)
 
     // Calculate FIFO for each stock item
     const sizeValuations = new Map<string, FifoSizeValuation>()
-    let unknownCostItems = 0
+
+    // Also process items that only exist in Zettle (not in Centra warehouse)
+    const processedEANs = new Set<string>()
 
     for (const stockItem of stockItems) {
-      if (stockItem.physicalQuantity <= 0) continue
+      const warehouseQty = stockItem.physicalQuantity
+      const storeQty = zettleInventory?.get(stockItem.EAN) || 0
+      const totalQty = warehouseQty + storeQty
+
+      if (totalQty <= 0) continue
 
       const sizeValuation = this.calculateSizeValuation(
         stockItem,
-        deliveriesByEAN.get(stockItem.EAN) || []
+        warehouseQty,
+        storeQty,
+        deliveriesByEAN.get(stockItem.EAN) || [],
+        stockChangesByEAN.get(stockItem.EAN) || []
       )
 
-      if (sizeValuation.inventoryLayers.length === 0 && sizeValuation.currentStock > 0) {
-        unknownCostItems++
-      }
-
       sizeValuations.set(stockItem.EAN, sizeValuation)
+      processedEANs.add(stockItem.EAN)
+    }
+
+    // Process Zettle-only items (not in Centra warehouse)
+    if (zettleInventory) {
+      for (const [ean, storeQty] of zettleInventory) {
+        if (processedEANs.has(ean) || storeQty <= 0) continue
+
+        // Create a minimal stock item for Zettle-only products
+        // These won't have full product info but will have valuation
+        const sizeValuation = this.calculateSizeValuationForZettleOnly(
+          ean,
+          storeQty,
+          deliveriesByEAN.get(ean) || [],
+          stockChangesByEAN.get(ean) || []
+        )
+
+        if (sizeValuation) {
+          sizeValuations.set(ean, sizeValuation)
+        }
+      }
     }
 
     // Aggregate to product level
     const products = this.aggregateToProducts(stockItems, sizeValuations)
 
     // Calculate summary
-    const summary = this.calculateSummary(products, unknownCostItems)
+    const summary = this.calculateSummary(products)
 
     return { products, summary }
   }
@@ -77,7 +122,30 @@ export class FifoCalculator {
     }
 
     // Sort each group by createdAt (oldest first for FIFO)
-    for (const [_, group] of map) {
+    for (const [, group] of map) {
+      group.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+    }
+
+    return map
+  }
+
+  /**
+   * Group stock changes by EAN, sorted oldest first
+   */
+  private groupStockChangesByEAN(stockChanges: ESStockChange[]): Map<string, ESStockChange[]> {
+    const map = new Map<string, ESStockChange[]>()
+
+    for (const change of stockChanges) {
+      if (!change.EAN) continue
+
+      if (!map.has(change.EAN)) {
+        map.set(change.EAN, [])
+      }
+      map.get(change.EAN)!.push(change)
+    }
+
+    // Sort each group by createdAt (oldest first for FIFO)
+    for (const [, group] of map) {
       group.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
     }
 
@@ -86,16 +154,29 @@ export class FifoCalculator {
 
   /**
    * Calculate FIFO valuation for a single size (EAN)
+   * Uses purchase deliveries first, then falls back to stock changes
+   * @param stockItem - The stock item from Elasticsearch
+   * @param warehouseQty - Quantity in Centra warehouse
+   * @param storeQty - Quantity in Zettle store
+   * @param deliveries - Purchase deliveries for this EAN
+   * @param stockChanges - Stock changes for this EAN
    */
   private calculateSizeValuation(
     stockItem: StockItem,
-    deliveries: ESPurchaseDelivery[]
+    warehouseQty: number,
+    storeQty: number,
+    deliveries: ESPurchaseDelivery[],
+    stockChanges: ESStockChange[]
   ): FifoSizeValuation {
     const now = new Date()
     const layers: InventoryLayer[] = []
-    let remainingStock = stockItem.physicalQuantity
+    const totalStock = warehouseQty + storeQty
+    let remainingStock = totalStock
 
-    // Apply FIFO: consume from oldest deliveries first
+    // Track quantity by source
+    const quantityBySource = { delivery: 0, stockChange: 0, unknown: 0 }
+
+    // STEP 1: Apply FIFO using purchase deliveries (most trusted)
     for (const delivery of deliveries) {
       if (remainingStock <= 0) break
 
@@ -112,6 +193,7 @@ export class FifoCalculator {
         layers.push({
           purchaseOrderId: String(delivery.purchaseOrderDelivery.purchaseOrderId),
           purchaseOrderDeliveryId: delivery.purchaseOrderDelivery.id,
+          stockChangeId: null,
           deliveryDate: delivery.createdAt,
           unitCost: unitCostSEK, // Use landed cost in SEK
           quantity: delivery.quantity,
@@ -119,22 +201,79 @@ export class FifoCalculator {
           layerValue: remainingFromDelivery * unitCostSEK,
           ageInDays,
           supplierName: delivery.purchaseOrderDelivery.supplier,
+          source: 'delivery',
         })
 
+        quantityBySource.delivery += remainingFromDelivery
         remainingStock -= remainingFromDelivery
       }
     }
 
-    // Calculate aggregates
+    // STEP 2: If still remaining stock, use stock changes (less trusted)
+    for (const change of stockChanges) {
+      if (remainingStock <= 0) break
+
+      const changeDate = new Date(change.createdAt)
+      const ageInDays = Math.floor((now.getTime() - changeDate.getTime()) / (1000 * 60 * 60 * 24))
+
+      // How much of this stock change is still in stock?
+      const remainingFromChange = Math.min(remainingStock, change.quantity)
+
+      if (remainingFromChange > 0) {
+        // Use SEK-converted cost
+        const unitCostSEK = change.unitCostSEK ?? change.unitCost
+
+        layers.push({
+          purchaseOrderId: null,
+          purchaseOrderDeliveryId: null,
+          stockChangeId: change.stockChange.id,
+          deliveryDate: change.createdAt,
+          unitCost: unitCostSEK,
+          quantity: change.quantity,
+          remainingQuantity: remainingFromChange,
+          layerValue: remainingFromChange * unitCostSEK,
+          ageInDays,
+          supplierName: null, // Stock changes don't have supplier info
+          source: 'stockChange',
+        })
+
+        quantityBySource.stockChange += remainingFromChange
+        remainingStock -= remainingFromChange
+      }
+    }
+
+    // STEP 3: Any remaining stock has unknown cost
+    if (remainingStock > 0) {
+      quantityBySource.unknown += remainingStock
+      // Note: We don't create a layer for unknown items since we have no cost data
+    }
+
+    // Calculate aggregates from layers
     const totalValue = layers.reduce((sum, l) => sum + l.layerValue, 0)
     const totalQuantity = layers.reduce((sum, l) => sum + l.remainingQuantity, 0)
     const weightedAgeSum = layers.reduce((sum, l) => sum + l.ageInDays * l.remainingQuantity, 0)
+
+    // Determine primary source (the source that covers the most quantity)
+    let primarySource: InventoryLayerSource = 'unknown'
+    if (quantityBySource.delivery > 0) {
+      primarySource = 'delivery'
+    } else if (quantityBySource.stockChange > 0) {
+      primarySource = 'stockChange'
+    }
+
+    // Calculate value distribution by location (proportional)
+    const stockByLocation: StockByLocation = { warehouse: warehouseQty, store: storeQty }
+    const valueByLocation: ValueByLocation = this.calculateValueByLocation(
+      totalValue,
+      warehouseQty,
+      storeQty
+    )
 
     return {
       EAN: stockItem.EAN,
       size: stockItem.size,
       sizeNumber: stockItem.sizeNumber,
-      currentStock: stockItem.physicalQuantity,
+      currentStock: totalStock,
       totalValue: Math.round(totalValue * 100) / 100,
       weightedAverageCost: totalQuantity > 0 ? Math.round((totalValue / totalQuantity) * 100) / 100 : 0,
       inventoryLayers: layers,
@@ -142,6 +281,146 @@ export class FifoCalculator {
       newestPurchaseDate: layers.length > 0 ? layers[layers.length - 1].deliveryDate : null,
       averageAgeInDays: totalQuantity > 0 ? Math.round(weightedAgeSum / totalQuantity) : 0,
       maxAgeInDays: layers.length > 0 ? layers[0].ageInDays : 0,
+      primarySource,
+      quantityBySource,
+      stockByLocation,
+      valueByLocation,
+    }
+  }
+
+  /**
+   * Calculate FIFO valuation for items that only exist in Zettle (not in Centra warehouse)
+   */
+  private calculateSizeValuationForZettleOnly(
+    ean: string,
+    storeQty: number,
+    deliveries: ESPurchaseDelivery[],
+    stockChanges: ESStockChange[]
+  ): FifoSizeValuation | null {
+    // We need delivery data to have any valuation info
+    if (deliveries.length === 0 && stockChanges.length === 0) {
+      return null
+    }
+
+    const now = new Date()
+    const layers: InventoryLayer[] = []
+    let remainingStock = storeQty
+
+    const quantityBySource = { delivery: 0, stockChange: 0, unknown: 0 }
+
+    // Apply same FIFO logic
+    for (const delivery of deliveries) {
+      if (remainingStock <= 0) break
+
+      const deliveryDate = new Date(delivery.createdAt)
+      const ageInDays = Math.floor((now.getTime() - deliveryDate.getTime()) / (1000 * 60 * 60 * 24))
+      const remainingFromDelivery = Math.min(remainingStock, delivery.quantity)
+
+      if (remainingFromDelivery > 0) {
+        const unitCostSEK = delivery.unitTotalCostSEK ?? delivery.unitTotalCost
+
+        layers.push({
+          purchaseOrderId: String(delivery.purchaseOrderDelivery.purchaseOrderId),
+          purchaseOrderDeliveryId: delivery.purchaseOrderDelivery.id,
+          stockChangeId: null,
+          deliveryDate: delivery.createdAt,
+          unitCost: unitCostSEK,
+          quantity: delivery.quantity,
+          remainingQuantity: remainingFromDelivery,
+          layerValue: remainingFromDelivery * unitCostSEK,
+          ageInDays,
+          supplierName: delivery.purchaseOrderDelivery.supplier,
+          source: 'delivery',
+        })
+
+        quantityBySource.delivery += remainingFromDelivery
+        remainingStock -= remainingFromDelivery
+      }
+    }
+
+    for (const change of stockChanges) {
+      if (remainingStock <= 0) break
+
+      const changeDate = new Date(change.createdAt)
+      const ageInDays = Math.floor((now.getTime() - changeDate.getTime()) / (1000 * 60 * 60 * 24))
+      const remainingFromChange = Math.min(remainingStock, change.quantity)
+
+      if (remainingFromChange > 0) {
+        const unitCostSEK = change.unitCostSEK ?? change.unitCost
+
+        layers.push({
+          purchaseOrderId: null,
+          purchaseOrderDeliveryId: null,
+          stockChangeId: change.stockChange.id,
+          deliveryDate: change.createdAt,
+          unitCost: unitCostSEK,
+          quantity: change.quantity,
+          remainingQuantity: remainingFromChange,
+          layerValue: remainingFromChange * unitCostSEK,
+          ageInDays,
+          supplierName: null,
+          source: 'stockChange',
+        })
+
+        quantityBySource.stockChange += remainingFromChange
+        remainingStock -= remainingFromChange
+      }
+    }
+
+    if (remainingStock > 0) {
+      quantityBySource.unknown += remainingStock
+    }
+
+    const totalValue = layers.reduce((sum, l) => sum + l.layerValue, 0)
+    const totalQuantity = layers.reduce((sum, l) => sum + l.remainingQuantity, 0)
+    const weightedAgeSum = layers.reduce((sum, l) => sum + l.ageInDays * l.remainingQuantity, 0)
+
+    let primarySource: InventoryLayerSource = 'unknown'
+    if (quantityBySource.delivery > 0) {
+      primarySource = 'delivery'
+    } else if (quantityBySource.stockChange > 0) {
+      primarySource = 'stockChange'
+    }
+
+    return {
+      EAN: ean,
+      size: '',  // Unknown from Zettle
+      sizeNumber: '',
+      currentStock: storeQty,
+      totalValue: Math.round(totalValue * 100) / 100,
+      weightedAverageCost: totalQuantity > 0 ? Math.round((totalValue / totalQuantity) * 100) / 100 : 0,
+      inventoryLayers: layers,
+      oldestPurchaseDate: layers.length > 0 ? layers[0].deliveryDate : null,
+      newestPurchaseDate: layers.length > 0 ? layers[layers.length - 1].deliveryDate : null,
+      averageAgeInDays: totalQuantity > 0 ? Math.round(weightedAgeSum / totalQuantity) : 0,
+      maxAgeInDays: layers.length > 0 ? layers[0].ageInDays : 0,
+      primarySource,
+      quantityBySource,
+      stockByLocation: { warehouse: 0, store: storeQty },
+      valueByLocation: { warehouse: 0, store: Math.round(totalValue * 100) / 100 },
+    }
+  }
+
+  /**
+   * Calculate value distribution by location (proportional to stock)
+   */
+  private calculateValueByLocation(
+    totalValue: number,
+    warehouseQty: number,
+    storeQty: number
+  ): ValueByLocation {
+    const totalStock = warehouseQty + storeQty
+
+    if (totalStock <= 0) {
+      return { warehouse: 0, store: 0 }
+    }
+
+    const warehouseValue = (warehouseQty / totalStock) * totalValue
+    const storeValue = (storeQty / totalStock) * totalValue
+
+    return {
+      warehouse: Math.round(warehouseValue * 100) / 100,
+      store: Math.round(storeValue * 100) / 100,
     }
   }
 
@@ -239,9 +518,9 @@ export class FifoCalculator {
   }
 
   /**
-   * Calculate summary statistics
+   * Calculate summary statistics including source distribution and location distribution
    */
-  private calculateSummary(products: FifoProductValuation[], unknownCostItems: number): FifoSummary {
+  private calculateSummary(products: FifoProductValuation[]): FifoSummary {
     const totalValue = products.reduce((sum, p) => sum + p.totalValue, 0)
     const totalItems = products.reduce((sum, p) => sum + p.totalStock, 0)
 
@@ -249,14 +528,36 @@ export class FifoCalculator {
     const valueByAgeGroup: ValueByAgeGroup = { fresh: 0, aging: 0, old: 0, veryOld: 0 }
     const itemsByAgeGroup: ValueByAgeGroup = { fresh: 0, aging: 0, old: 0, veryOld: 0 }
 
+    // Calculate source distribution
+    const itemsBySource: ItemsBySource = { delivery: 0, stockChange: 0, unknown: 0 }
+    const valueBySource: ItemsBySource = { delivery: 0, stockChange: 0, unknown: 0 }
+
+    // Calculate location distribution
+    const totalStockByLocation: StockByLocation = { warehouse: 0, store: 0 }
+    const totalValueByLocation: ValueByLocation = { warehouse: 0, store: 0 }
+
     for (const product of products) {
       for (const variant of product.variants) {
         for (const size of variant.sizes) {
+          // Age distribution from layers
           for (const layer of size.inventoryLayers) {
             const group = getAgeClassification(layer.ageInDays)
             valueByAgeGroup[group] += layer.layerValue
             itemsByAgeGroup[group] += layer.remainingQuantity
+
+            // Source distribution
+            itemsBySource[layer.source] += layer.remainingQuantity
+            valueBySource[layer.source] += layer.layerValue
           }
+
+          // Track unknown items (stock without any cost data)
+          itemsBySource.unknown += size.quantityBySource.unknown
+
+          // Location distribution
+          totalStockByLocation.warehouse += size.stockByLocation.warehouse
+          totalStockByLocation.store += size.stockByLocation.store
+          totalValueByLocation.warehouse += size.valueByLocation.warehouse
+          totalValueByLocation.store += size.valueByLocation.store
         }
       }
     }
@@ -266,6 +567,13 @@ export class FifoCalculator {
     valueByAgeGroup.aging = Math.round(valueByAgeGroup.aging)
     valueByAgeGroup.old = Math.round(valueByAgeGroup.old)
     valueByAgeGroup.veryOld = Math.round(valueByAgeGroup.veryOld)
+
+    valueBySource.delivery = Math.round(valueBySource.delivery)
+    valueBySource.stockChange = Math.round(valueBySource.stockChange)
+    valueBySource.unknown = Math.round(valueBySource.unknown)
+
+    totalValueByLocation.warehouse = Math.round(totalValueByLocation.warehouse)
+    totalValueByLocation.store = Math.round(totalValueByLocation.store)
 
     const totalWeightedAge = products.reduce(
       (sum, p) => sum + p.averageAgeInDays * p.totalStock,
@@ -279,7 +587,11 @@ export class FifoCalculator {
       averageAgeInDays: totalItems > 0 ? Math.round(totalWeightedAge / totalItems) : 0,
       valueByAgeGroup,
       itemsByAgeGroup,
-      unknownCostItems,
+      unknownCostItems: itemsBySource.unknown, // Legacy field
+      itemsBySource,
+      valueBySource,
+      totalValueByLocation,
+      totalStockByLocation,
       calculatedAt: new Date().toISOString(),
     }
   }

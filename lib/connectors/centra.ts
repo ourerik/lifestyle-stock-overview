@@ -14,6 +14,39 @@ interface CentraPODeliveryResponse {
   errors?: Array<{ message: string }>;
 }
 
+interface CentraStockChangeLineResponse {
+  data?: {
+    stockChangeLines: CentraStockChangeLine[];
+  };
+  errors?: Array<{ message: string }>;
+}
+
+export interface CentraStockChangeLine {
+  id: number;
+  deliveredQuantity: number;
+  unitCost: CentraCostValue | null;
+  currencyBaseRate: number;
+  productSize: {
+    id: number;
+    EAN: string | null;
+    SKU: string | null;
+    sizeNumber: string | null;
+    productVariant: {
+      id: number;
+      name: string;
+      variantNumber: string | null;
+      product: { id: number; name: string };
+    } | null;
+  } | null;
+  stockChange: {
+    id: number;
+    createdAt: string;
+    comment: string;
+    type: string;
+    warehouse: { id: number; name: string } | null;
+  };
+}
+
 export interface CentraPODelivery {
   id: number;
   number: string;
@@ -282,5 +315,94 @@ export class CentraConnector {
     }
 
     return allDeliveries;
+  }
+
+  /**
+   * Fetch all stock change lines with cost information
+   * @param sinceId - Only fetch lines with stockChange.id > sinceId (for incremental sync)
+   */
+  async fetchStockChangeLines(sinceId?: number): Promise<CentraStockChangeLine[]> {
+    const query = `
+      query GetStockChangeLines($page: Int!) {
+        stockChangeLines(
+          limit: 200
+          page: $page
+        ) {
+          id
+          deliveredQuantity
+          unitCost { value currency { code } }
+          currencyBaseRate
+          productSize {
+            id
+            EAN
+            SKU
+            sizeNumber
+            productVariant {
+              id
+              name
+              variantNumber
+              product {
+                id
+                name
+              }
+            }
+          }
+          stockChange {
+            id
+            createdAt
+            comment
+            type
+            warehouse { id name }
+          }
+        }
+      }
+    `;
+
+    let allLines: CentraStockChangeLine[] = [];
+    let page = 1;
+    let hasMore = true;
+
+    while (hasMore) {
+      const response = await fetch(this.baseUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify({
+          query,
+          variables: { page },
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Centra GraphQL failed: ${response.status} - ${errorText}`);
+      }
+
+      const result: CentraStockChangeLineResponse = await response.json();
+
+      if (result.errors && result.errors.length > 0) {
+        throw new Error(`Centra GraphQL errors: ${result.errors.map((e) => e.message).join(', ')}`);
+      }
+
+      const lines = result.data?.stockChangeLines || [];
+
+      // Filter lines if sinceId is provided (based on parent stockChange.id)
+      const filtered = sinceId
+        ? lines.filter(l => l.stockChange.id > sinceId)
+        : lines;
+
+      allLines = allLines.concat(filtered);
+
+      // If we got less than 200, we've reached the end
+      if (lines.length < 200) {
+        hasMore = false;
+      } else {
+        page++;
+      }
+    }
+
+    return allLines;
   }
 }

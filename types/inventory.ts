@@ -82,6 +82,12 @@ export interface InventoryData {
   products: AggregatedProduct[]
   folders: string[]
   summary: InventorySummary
+  fifoSummary?: import('@/types/fifo').FifoSummary  // Optional FIFO summary with location breakdown
+}
+
+// Internal result type including Zettle map (not serialized to API response)
+export interface InventoryFetchResult extends InventoryData {
+  zettleInventory: Map<string, number>  // EAN -> quantity (for FIFO calculator)
 }
 
 // API request params

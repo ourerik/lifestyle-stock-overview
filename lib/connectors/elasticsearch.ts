@@ -21,6 +21,7 @@ export interface ESPurchaseDelivery {
   productVariantId: number
   productVariantNumber: string
   productSizeId: number
+  sizeNumber: string | null
   quantity: number
   purchaseOrderDelivery: {
     id: string
@@ -61,8 +62,43 @@ const COMPANY_INDEX_PREFIX: Record<CompanyId, string> = {
 }
 
 const COMPANY_PO_DELIVERY_INDEX: Record<CompanyId, string> = {
-  'varg': 'varg_purchasing_order_deliveries',
-  'sneaky-steve': 'sneaky_purchasing_order_deliveries',
+  'varg': 'varg_purchasing_order_deliveries_v2',
+  'sneaky-steve': 'sneaky_purchasing_order_deliveries_v2',
+}
+
+const COMPANY_STOCK_CHANGES_INDEX: Record<CompanyId, string> = {
+  'varg': 'varg_stock_changes_v1',
+  'sneaky-steve': 'sneaky_stock_changes_v1',
+}
+
+// Stock change document stored in Elasticsearch
+export interface ESStockChange {
+  id: string  // {productSizeId}_{stockChangeId}
+  createdAt: string
+  EAN: string | null
+  productId: number
+  productName: string
+  productNumber: string
+  productVariantName: string
+  productVariantId: number
+  productVariantNumber: string
+  productSizeId: number
+  sizeNumber: string | null
+  quantity: number
+  stockChange: {
+    id: string
+    type: string
+    comment: string
+    warehouse: string | null
+  }
+  // Original currency values
+  currency: string
+  exchangeRate: number
+  unitCost: number
+  totalCost: number
+  // SEK converted values
+  unitCostSEK: number
+  totalCostSEK: number
 }
 
 export class ElasticsearchConnector {
@@ -396,5 +432,181 @@ export class ElasticsearchConnector {
     } while (true)
 
     return allDeliveries
+  }
+
+  /**
+   * Fetch purchase deliveries with pagination and sorting for list view
+   */
+  async fetchPurchaseDeliveriesPaginated(
+    company: CompanyId,
+    options: {
+      page: number
+      pageSize: number
+      sortBy: string
+      sortOrder: 'asc' | 'desc'
+    }
+  ): Promise<{ deliveries: ESPurchaseDelivery[]; total: number }> {
+    const index = COMPANY_PO_DELIVERY_INDEX[company]
+    const { page, pageSize, sortBy, sortOrder } = options
+
+    // Map sortBy to ES field names
+    const sortFieldMap: Record<string, string> = {
+      createdAt: 'createdAt',
+      supplier: 'purchaseOrderDelivery.supplier.keyword',
+      productNumber: 'productNumber.keyword',
+      productName: 'productName.keyword',
+      quantity: 'quantity',
+      unitCostSEK: 'unitTotalCostSEK',
+      totalCostSEK: 'totalCostSEK',
+    }
+
+    const sortField = sortFieldMap[sortBy] || 'createdAt'
+
+    try {
+      const result = await this.request<{
+        hits: {
+          total: { value: number }
+          hits: Array<{
+            _source: ESPurchaseDelivery
+          }>
+        }
+      }>(`/${index}/_search`, {
+        from: page * pageSize,
+        size: pageSize,
+        sort: [{ [sortField]: sortOrder }],
+        _source: true,
+      })
+
+      return {
+        deliveries: result.hits.hits.map(h => h._source),
+        total: result.hits.total.value,
+      }
+    } catch (error) {
+      // Index might not exist yet
+      console.log(`[ES] Failed to fetch deliveries for ${company}:`, error)
+      return { deliveries: [], total: 0 }
+    }
+  }
+
+  /**
+   * Get the max stock change ID in ES for incremental sync
+   */
+  async getMaxStockChangeId(company: CompanyId): Promise<number | null> {
+    const index = COMPANY_STOCK_CHANGES_INDEX[company]
+
+    try {
+      const result = await this.request<{
+        aggregations?: {
+          max_id: { value: number | null }
+        }
+      }>(`/${index}/_search`, {
+        size: 0,
+        aggs: {
+          max_id: {
+            max: {
+              field: 'stockChange.id',
+            },
+          },
+        },
+      })
+
+      const maxId = result.aggregations?.max_id?.value
+      return maxId ? Math.floor(maxId) : null
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * Bulk index stock changes to Elasticsearch
+   */
+  async saveStockChanges(
+    company: CompanyId,
+    stockChanges: ESStockChange[]
+  ): Promise<{ indexed: number; errors: number }> {
+    if (stockChanges.length === 0) {
+      return { indexed: 0, errors: 0 }
+    }
+
+    const index = COMPANY_STOCK_CHANGES_INDEX[company]
+
+    // Build bulk request body
+    const bulkBody = stockChanges.flatMap(doc => [
+      { index: { _index: index, _id: doc.id } },
+      doc,
+    ])
+
+    const response = await fetch(`${this.baseUrl}/_bulk`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `ApiKey ${this.apiKey}`,
+        'Content-Type': 'application/x-ndjson',
+      },
+      body: bulkBody.map(line => JSON.stringify(line)).join('\n') + '\n',
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`Elasticsearch bulk indexing failed: ${response.status} - ${errorText}`)
+    }
+
+    const result = await response.json() as {
+      errors: boolean
+      items: Array<{ index: { status: number; error?: object } }>
+    }
+
+    const errorCount = result.items.filter(item => item.index.error).length
+    const indexedCount = result.items.filter(item => !item.index.error).length
+
+    if (result.errors) {
+      console.log(`[ES] Stock changes bulk indexing completed with ${errorCount} errors`)
+    }
+
+    return { indexed: indexedCount, errors: errorCount }
+  }
+
+  /**
+   * Fetch all stock changes for FIFO calculation
+   */
+  async fetchStockChanges(company: CompanyId): Promise<ESStockChange[]> {
+    const index = COMPANY_STOCK_CHANGES_INDEX[company]
+    const allChanges: ESStockChange[] = []
+    let searchAfter: unknown[] | undefined
+
+    try {
+      do {
+        const body: Record<string, unknown> = {
+          size: 10000,
+          sort: [{ createdAt: 'asc' }, '_doc'],
+          _source: true,
+        }
+
+        if (searchAfter) {
+          body.search_after = searchAfter
+        }
+
+        const result = await this.request<{
+          hits: {
+            hits: Array<{
+              _source: ESStockChange
+              sort: unknown[]
+            }>
+          }
+        }>(`/${index}/_search`, body)
+
+        const hits = result.hits.hits
+        if (hits.length === 0) break
+
+        allChanges.push(...hits.map(h => h._source))
+        searchAfter = hits[hits.length - 1].sort
+
+        if (hits.length < 10000) break
+      } while (true)
+    } catch {
+      // Index might not exist yet
+      console.log(`[ES] Stock changes index not found for ${company}`)
+    }
+
+    return allChanges
   }
 }

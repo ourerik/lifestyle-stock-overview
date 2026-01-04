@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth0 } from '@/lib/auth0'
 import { FifoCalculator } from '@/lib/services/fifo-calculator'
-import type { CompanyId } from '@/config/companies'
+import { ZettleConnector } from '@/lib/connectors/zettle'
+import { COMPANIES, type CompanyId } from '@/config/companies'
 import type { Env } from '@/types'
 import type { FifoValuationData } from '@/types/fifo'
 
@@ -81,8 +82,25 @@ export async function GET(request: NextRequest) {
   // Calculate fresh data
   try {
     const env: Env = process.env as unknown as Env
+
+    // Fetch Zettle inventory for Sneaky Steve
+    let zettleInventory: Map<string, number> | undefined
+    if (company === 'sneaky-steve') {
+      try {
+        const companyConfig = COMPANIES['sneaky-steve']
+        const zettleConfig = companyConfig.connectors?.find(c => c.type === 'zettle')
+        if (zettleConfig) {
+          const zettle = new ZettleConnector(env, zettleConfig.envPrefix)
+          const zettleItems = await zettle.fetchInventory()
+          zettleInventory = new Map(zettleItems.map(item => [item.barcode, item.balance]))
+        }
+      } catch (zettleError) {
+        console.error('Failed to fetch Zettle inventory (continuing without it):', zettleError)
+      }
+    }
+
     const calculator = new FifoCalculator(env)
-    const data = await calculator.calculateValuation(company)
+    const data = await calculator.calculateValuation(company, zettleInventory)
 
     // Store in cache
     setInCache(company, data)

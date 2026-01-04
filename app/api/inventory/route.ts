@@ -4,7 +4,7 @@ import { InventoryAggregator } from '@/lib/services/inventory-aggregator'
 import { FifoCalculator } from '@/lib/services/fifo-calculator'
 import type { CompanyId } from '@/config/companies'
 import type { Env } from '@/types'
-import type { InventoryData } from '@/types/inventory'
+import type { InventoryData, InventoryFetchResult } from '@/types/inventory'
 import type { FifoValuationData } from '@/types/fifo'
 
 const VALID_COMPANIES: Exclude<CompanyId, 'all'>[] = ['varg', 'sneaky-steve']
@@ -71,6 +71,7 @@ function mergeWithFifo(inventoryData: InventoryData, fifoData: FifoValuationData
   return {
     ...inventoryData,
     products: productsWithFifo,
+    fifoSummary: fifoData.summary,  // Include FIFO summary with location breakdown
   }
 }
 
@@ -110,14 +111,18 @@ export async function GET(request: NextRequest) {
   try {
     const env: Env = process.env as unknown as Env
     const aggregator = new InventoryAggregator(env)
-    const inventoryData = await aggregator.fetchInventory(company)
+    const fetchResult = await aggregator.fetchInventory(company)
+
+    // Extract zettleInventory for FIFO calculator, keep inventoryData for response
+    const { zettleInventory, ...inventoryData } = fetchResult
 
     // Fetch FIFO data (from cache if available)
     let fifoData = getFifoFromCache(company)
     if (!fifoData) {
       try {
         const calculator = new FifoCalculator(env)
-        fifoData = await calculator.calculateValuation(company)
+        // Pass Zettle inventory for Sneaky Steve to include store stock in valuation
+        fifoData = await calculator.calculateValuation(company, zettleInventory.size > 0 ? zettleInventory : undefined)
         setFifoInCache(company, fifoData)
       } catch (fifoError) {
         console.error('Failed to fetch FIFO data (continuing without it):', fifoError)
