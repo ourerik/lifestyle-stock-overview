@@ -61,6 +61,9 @@ export interface AggregatedProduct {
   totalIncoming: number
   status: ProductStatus[]
   variants: AggregatedVariant[]
+  // FIFO valuation data (optional, populated when available)
+  fifoValue?: number      // Total inventory value (SEK)
+  fifoCost?: number       // Weighted average cost per unit (SEK)
 }
 
 // Inventory summary

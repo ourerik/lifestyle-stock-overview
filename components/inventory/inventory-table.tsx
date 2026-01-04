@@ -37,7 +37,9 @@ export function InventoryTable({
           <TableHead className="text-right w-24">Lager</TableHead>
           {showZettle && <TableHead className="text-right w-24">Butik</TableHead>}
           <TableHead className="text-right w-24">Inkommande</TableHead>
-          <TableHead className="w-40">Status</TableHead>
+          <TableHead className="text-right w-28">Lagervärde</TableHead>
+          <TableHead className="text-right w-24">Kr/st</TableHead>
+          <TableHead className="w-32">Status</TableHead>
           <TableHead className="w-8"></TableHead>
         </TableRow>
       </TableHeader>

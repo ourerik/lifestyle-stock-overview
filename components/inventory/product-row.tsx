@@ -4,6 +4,7 @@ import Image from 'next/image'
 import { ChevronRight } from 'lucide-react'
 import { TableCell, TableRow } from '@/components/ui/table'
 import { StatusBadges } from './status-badge'
+import { formatCurrency } from '@/types/fifo'
 import type { AggregatedProduct } from '@/types/inventory'
 
 interface ProductRowProps {
@@ -48,6 +49,20 @@ export function ProductRow({ product, showZettle = false, onSelect }: ProductRow
           <span className="text-blue-600 dark:text-blue-400 font-medium">
             +{product.totalIncoming}
           </span>
+        ) : (
+          <span className="text-muted-foreground">-</span>
+        )}
+      </TableCell>
+      <TableCell className="text-right">
+        {product.fifoValue != null ? (
+          <span className="font-medium">{formatCurrency(product.fifoValue)}</span>
+        ) : (
+          <span className="text-muted-foreground">-</span>
+        )}
+      </TableCell>
+      <TableCell className="text-right">
+        {product.fifoCost != null ? (
+          <span className="text-muted-foreground">{formatCurrency(product.fifoCost)}</span>
         ) : (
           <span className="text-muted-foreground">-</span>
         )}

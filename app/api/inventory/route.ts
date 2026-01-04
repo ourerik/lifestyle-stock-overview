@@ -1,36 +1,77 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth0 } from '@/lib/auth0'
 import { InventoryAggregator } from '@/lib/services/inventory-aggregator'
+import { FifoCalculator } from '@/lib/services/fifo-calculator'
 import type { CompanyId } from '@/config/companies'
 import type { Env } from '@/types'
+import type { InventoryData } from '@/types/inventory'
+import type { FifoValuationData } from '@/types/fifo'
 
 const VALID_COMPANIES: Exclude<CompanyId, 'all'>[] = ['varg', 'sneaky-steve']
 
 // Simple in-memory cache for inventory data
-let inventoryCache: Map<string, { data: unknown; cachedAt: Date }> = new Map()
+const inventoryCache: Map<string, { data: InventoryData; cachedAt: Date }> = new Map()
+const fifoCache: Map<string, { data: FifoValuationData; cachedAt: Date }> = new Map()
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000 // 24 hours
 
-function getCacheKey(company: string): string {
-  return company
-}
-
-function getFromCache(company: string): { data: unknown; cachedAt: Date } | null {
-  const key = getCacheKey(company)
-  const cached = inventoryCache.get(key)
+function getFromCache(company: string): { data: InventoryData; cachedAt: Date } | null {
+  const cached = inventoryCache.get(company)
   if (!cached) return null
 
   const age = Date.now() - cached.cachedAt.getTime()
   if (age > CACHE_TTL_MS) {
-    inventoryCache.delete(key)
+    inventoryCache.delete(company)
     return null
   }
 
   return cached
 }
 
-function setInCache(company: string, data: unknown): void {
-  const key = getCacheKey(company)
-  inventoryCache.set(key, { data, cachedAt: new Date() })
+function setInCache(company: string, data: InventoryData): void {
+  inventoryCache.set(company, { data, cachedAt: new Date() })
+}
+
+function getFifoFromCache(company: string): FifoValuationData | null {
+  const cached = fifoCache.get(company)
+  if (!cached) return null
+
+  const age = Date.now() - cached.cachedAt.getTime()
+  if (age > CACHE_TTL_MS) {
+    fifoCache.delete(company)
+    return null
+  }
+
+  return cached.data
+}
+
+function setFifoInCache(company: string, data: FifoValuationData): void {
+  fifoCache.set(company, { data, cachedAt: new Date() })
+}
+
+function mergeWithFifo(inventoryData: InventoryData, fifoData: FifoValuationData): InventoryData {
+  // Build a map of productNumber -> FIFO values
+  const fifoMap = new Map<string, { totalValue: number; averageCost: number }>()
+  for (const product of fifoData.products) {
+    fifoMap.set(product.productNumber, {
+      totalValue: product.totalValue,
+      averageCost: product.averageCost,
+    })
+  }
+
+  // Merge FIFO data into each product
+  const productsWithFifo = inventoryData.products.map(product => {
+    const fifo = fifoMap.get(product.productNumber)
+    return {
+      ...product,
+      fifoValue: fifo?.totalValue,
+      fifoCost: fifo?.averageCost,
+    }
+  })
+
+  return {
+    ...inventoryData,
+    products: productsWithFifo,
+  }
 }
 
 export async function GET(request: NextRequest) {
@@ -69,7 +110,22 @@ export async function GET(request: NextRequest) {
   try {
     const env: Env = process.env as unknown as Env
     const aggregator = new InventoryAggregator(env)
-    const data = await aggregator.fetchInventory(company)
+    const inventoryData = await aggregator.fetchInventory(company)
+
+    // Fetch FIFO data (from cache if available)
+    let fifoData = getFifoFromCache(company)
+    if (!fifoData) {
+      try {
+        const calculator = new FifoCalculator(env)
+        fifoData = await calculator.calculateValuation(company)
+        setFifoInCache(company, fifoData)
+      } catch (fifoError) {
+        console.error('Failed to fetch FIFO data (continuing without it):', fifoError)
+      }
+    }
+
+    // Merge FIFO data with inventory
+    const data = fifoData ? mergeWithFifo(inventoryData, fifoData) : inventoryData
 
     // Store in cache
     setInCache(company, data)

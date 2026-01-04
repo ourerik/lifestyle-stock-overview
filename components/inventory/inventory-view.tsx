@@ -19,6 +19,7 @@ import { InventoryTable } from './inventory-table'
 import { ProductDetailSheet } from './product-detail-sheet'
 import type { InventoryData, ProductStatus, AggregatedProduct } from '@/types/inventory'
 import type { CompanyId } from '@/config/companies'
+import { formatCurrency } from '@/types/fifo'
 
 interface InventoryViewProps {
   data: InventoryData | null
@@ -130,6 +131,18 @@ export function InventoryView({
     })
   }, [data, stockFilter])
 
+  // Calculate total inventory value from FIFO data
+  const totalFifoValue = useMemo(() => {
+    if (!data) return null
+    let total = 0
+    for (const product of data.products) {
+      if (product.fifoValue != null) {
+        total += product.fifoValue
+      }
+    }
+    return total > 0 ? total : null
+  }, [data])
+
   // Calculate folder counts and sort by count descending
   const folderCounts = useMemo(() => {
     const counts = new Map<string, number>()
@@ -162,7 +175,7 @@ export function InventoryView({
   return (
     <div className="space-y-6">
       {/* Summary cards */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-4 lg:grid-cols-5">
         <SummaryCard
           title="Totalt antal"
           value={data?.summary.totalQuantity}
@@ -194,6 +207,14 @@ export function InventoryView({
           icon={TrendingUp}
           isLoading={isLoading}
           variant="info"
+        />
+        <SummaryCard
+          title="Lagervärde"
+          value={totalFifoValue}
+          subtitle="SEK (FIFO)"
+          icon={TrendingUp}
+          isLoading={isLoading}
+          formatAsCurrency
         />
       </div>
 
@@ -338,11 +359,12 @@ export function InventoryView({
 
 interface SummaryCardProps {
   title: string
-  value: number | undefined
+  value: number | undefined | null
   subtitle: string
   icon: React.ComponentType<{ className?: string }>
   isLoading: boolean
   variant?: 'default' | 'warning' | 'info'
+  formatAsCurrency?: boolean
 }
 
 function SummaryCard({
@@ -352,6 +374,7 @@ function SummaryCard({
   icon: Icon,
   isLoading,
   variant = 'default',
+  formatAsCurrency = false,
 }: SummaryCardProps) {
   const iconColorClass =
     variant === 'warning'
@@ -369,7 +392,13 @@ function SummaryCard({
             {isLoading ? (
               <Skeleton className="h-8 w-20 mt-1" />
             ) : (
-              <p className="text-2xl font-bold">{value?.toLocaleString('sv-SE') ?? '-'}</p>
+              <p className="text-2xl font-bold">
+                {value != null
+                  ? formatAsCurrency
+                    ? formatCurrency(value)
+                    : value.toLocaleString('sv-SE')
+                  : '-'}
+              </p>
             )}
             <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>
           </div>
