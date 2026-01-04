@@ -7,6 +7,44 @@ interface CentraGraphQLResponse {
   errors?: Array<{ message: string }>;
 }
 
+interface CentraPODeliveryResponse {
+  data?: {
+    purchaseOrderDeliveries: CentraPODelivery[];
+  };
+  errors?: Array<{ message: string }>;
+}
+
+export interface CentraPODelivery {
+  id: number;
+  number: string;
+  status: string;
+  createdAt: string;
+  supplier: { id: number; name: string };
+  warehouse: { id: number; name: string } | null;
+  purchaseOrder: { id: number; createdAt: string };
+  lines: CentraPODeliveryLine[];
+}
+
+interface CentraCostValue {
+  value: number;
+  currency: { code: string };
+}
+
+export interface CentraPODeliveryLine {
+  quantity: number;
+  unitCost: CentraCostValue;
+  landedCost: CentraCostValue;
+  customsValue: CentraCostValue;
+  productSize: {
+    id: number;
+    EAN: string | null;
+    SKU: string | null;
+    sizeNumber: string | null;
+  };
+  product: { id: number; name: string };
+  productVariant: { id: number; name: string; variantNumber: string | null };
+}
+
 interface CentraGraphQLOrder {
   number: number;
   status: string;
@@ -164,5 +202,85 @@ export class CentraConnector {
   private isReturn(order: CentraGraphQLOrder): boolean {
     const returnStatuses = ['returned', 'refunded', 'return', 'cancelled'];
     return returnStatuses.includes(order.status?.toLowerCase() || '');
+  }
+
+  /**
+   * Fetch all purchase order deliveries with status INSERTED (completed deliveries)
+   * @param sinceId - Only fetch deliveries with id > sinceId (for incremental sync)
+   */
+  async fetchPurchaseOrderDeliveries(sinceId?: number): Promise<CentraPODelivery[]> {
+    const query = `
+      query GetPODeliveries($page: Int!) {
+        purchaseOrderDeliveries(
+          limit: 100
+          page: $page
+          where: { status: INSERTED }
+        ) {
+          id
+          number
+          status
+          createdAt
+          supplier { id name }
+          warehouse { id name }
+          purchaseOrder { id createdAt }
+          lines {
+            quantity
+            unitCost { value currency { code } }
+            landedCost { value currency { code } }
+            customsValue { value currency { code } }
+            productSize { id EAN SKU sizeNumber }
+            product { id name }
+            productVariant { id name variantNumber }
+          }
+        }
+      }
+    `;
+
+    let allDeliveries: CentraPODelivery[] = [];
+    let page = 1;
+    let hasMore = true;
+
+    while (hasMore) {
+      const response = await fetch(this.baseUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify({
+          query,
+          variables: { page },
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Centra GraphQL failed: ${response.status} - ${errorText}`);
+      }
+
+      const result: CentraPODeliveryResponse = await response.json();
+
+      if (result.errors && result.errors.length > 0) {
+        throw new Error(`Centra GraphQL errors: ${result.errors.map((e) => e.message).join(', ')}`);
+      }
+
+      const deliveries = result.data?.purchaseOrderDeliveries || [];
+
+      // Filter deliveries if sinceId is provided
+      const filtered = sinceId
+        ? deliveries.filter(d => d.id > sinceId)
+        : deliveries;
+
+      allDeliveries = allDeliveries.concat(filtered);
+
+      // If we got less than 100, we've reached the end
+      if (deliveries.length < 100) {
+        hasMore = false;
+      } else {
+        page++;
+      }
+    }
+
+    return allDeliveries;
   }
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, useCallback } from 'react'
+import { useMemo, useState, useCallback, useEffect } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import Image from 'next/image'
 import {
@@ -27,6 +27,8 @@ import { StatusBadges } from './status-badge'
 import { StockHistoryChart } from './stock-history-chart'
 import type { AggregatedProduct } from '@/types/inventory'
 import type { CompanyId } from '@/config/companies'
+import type { FifoProductValuation } from '@/types/fifo'
+import { formatCurrency, formatPeriod, getAgeColorClass } from '@/types/fifo'
 
 interface ProductDetailSheetProps {
   product: AggregatedProduct | null
@@ -50,6 +52,82 @@ export function ProductDetailSheet({
   const pathname = usePathname()
 
   const [previewImage, setPreviewImage] = useState<string | null>(null)
+  const [fifoData, setFifoData] = useState<FifoProductValuation | null>(null)
+  const [fifoLoading, setFifoLoading] = useState(false)
+
+  // Fetch FIFO valuation data when sheet opens
+  useEffect(() => {
+    if (!open || !product) {
+      setFifoData(null)
+      return
+    }
+
+    const fetchFifoData = async () => {
+      setFifoLoading(true)
+      try {
+        const res = await fetch(
+          `/api/inventory/valuation?company=${companyId}&productNumber=${product.productNumber}`
+        )
+        if (res.ok) {
+          const json = await res.json()
+          // Find this product in the response
+          const productValuation = json.data?.products?.find(
+            (p: FifoProductValuation) => p.productNumber === product.productNumber
+          )
+          setFifoData(productValuation || null)
+        }
+      } catch (error) {
+        console.error('Failed to fetch FIFO data:', error)
+      } finally {
+        setFifoLoading(false)
+      }
+    }
+
+    fetchFifoData()
+  }, [open, product, companyId])
+
+  // Get FIFO data for a specific size (EAN)
+  const getSizeFifo = useCallback((ean: string) => {
+    if (!fifoData) return null
+    for (const variant of fifoData.variants) {
+      const size = variant.sizes.find(s => s.EAN === ean)
+      if (size) return size
+    }
+    return null
+  }, [fifoData])
+
+  // Get FIFO data for a specific variant
+  const getVariantFifo = useCallback((variantId: number) => {
+    if (!fifoData) return null
+    return fifoData.variants.find(v => v.variantId === variantId) || null
+  }, [fifoData])
+
+  // Get oldest purchase date from a variant's sizes
+  const getVariantOldestDate = useCallback((variantId: number): string | null => {
+    const variantFifo = getVariantFifo(variantId)
+    if (!variantFifo) return null
+    let oldest: string | null = null
+    for (const size of variantFifo.sizes) {
+      if (size.oldestPurchaseDate && (!oldest || size.oldestPurchaseDate < oldest)) {
+        oldest = size.oldestPurchaseDate
+      }
+    }
+    return oldest
+  }, [getVariantFifo])
+
+  // Get oldest purchase date across all sizes in the product
+  const getProductOldestDate = useCallback((): string | null => {
+    if (!fifoData) return null
+    let oldest: string | null = null
+    for (const variant of fifoData.variants) {
+      for (const size of variant.sizes) {
+        if (size.oldestPurchaseDate && (!oldest || size.oldestPurchaseDate < oldest)) {
+          oldest = size.oldestPurchaseDate
+        }
+      }
+    }
+    return oldest
+  }, [fifoData])
 
   // Get tab from URL, default to 'variants'
   const currentTab = searchParams.get('tab') || 'variants'
@@ -122,7 +200,7 @@ export function ProductDetailSheet({
 
         <div className="mt-6 space-y-6 px-6">
           {/* Summary */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="text-center p-3 bg-muted/50 rounded-lg">
               <div className="text-2xl font-bold">{product.totalQuantity}</div>
               <div className="text-xs text-muted-foreground">Lager</div>
@@ -138,6 +216,38 @@ export function ProductDetailSheet({
                 {product.totalIncoming > 0 ? `+${product.totalIncoming}` : '-'}
               </div>
               <div className="text-xs text-muted-foreground">Inkommande</div>
+            </div>
+            <div className="text-center p-3 bg-muted/50 rounded-lg">
+              {fifoLoading ? (
+                <div className="text-lg text-muted-foreground">...</div>
+              ) : fifoData ? (
+                <div className="text-lg font-bold">{formatCurrency(fifoData.totalValue)}</div>
+              ) : (
+                <div className="text-lg text-muted-foreground">-</div>
+              )}
+              <div className="text-xs text-muted-foreground">Lagervärde</div>
+            </div>
+            <div className="text-center p-3 bg-muted/50 rounded-lg">
+              {fifoLoading ? (
+                <div className="text-lg text-muted-foreground">...</div>
+              ) : fifoData ? (
+                <div className="text-lg font-bold">{formatCurrency(fifoData.averageCost)}</div>
+              ) : (
+                <div className="text-lg text-muted-foreground">-</div>
+              )}
+              <div className="text-xs text-muted-foreground">Kostnad/st</div>
+            </div>
+            <div className="text-center p-3 bg-muted/50 rounded-lg">
+              {fifoLoading ? (
+                <div className="text-lg text-muted-foreground">...</div>
+              ) : fifoData ? (
+                <div className={`text-lg font-bold ${getAgeColorClass(fifoData.maxAgeInDays)}`}>
+                  {formatPeriod(getProductOldestDate())}
+                </div>
+              ) : (
+                <div className="text-lg text-muted-foreground">-</div>
+              )}
+              <div className="text-xs text-muted-foreground">I lager sedan</div>
             </div>
           </div>
 
@@ -177,6 +287,19 @@ export function ProductDetailSheet({
                       <div className="text-xs text-blue-600">+{variant.totalIncoming}</div>
                     )}
                   </div>
+                  {(() => {
+                    const variantFifo = getVariantFifo(variant.variantId)
+                    if (!variantFifo) return null
+                    const oldestDate = getVariantOldestDate(variant.variantId)
+                    return (
+                      <div className="text-right ml-4 border-l pl-4">
+                        <div className="text-sm font-medium">{formatCurrency(variantFifo.totalValue)}</div>
+                        <div className={`text-xs ${getAgeColorClass(variantFifo.maxAgeInDays)}`}>
+                          {formatPeriod(oldestDate)}
+                        </div>
+                      </div>
+                    )
+                  })()}
                 </div>
 
                 {/* Sizes table - sizes as columns, stock locations as rows */}
@@ -240,6 +363,44 @@ export function ProductDetailSheet({
                           </TableCell>
                         ))}
                       </TableRow>
+                      {/* FIFO Value row */}
+                      {fifoData && (
+                        <TableRow>
+                          <TableCell className="font-medium">Värde</TableCell>
+                          {variant.sizes.map(size => {
+                            const sizeFifo = getSizeFifo(size.EAN)
+                            return (
+                              <TableCell key={size.EAN} className="text-center text-xs">
+                                {sizeFifo && sizeFifo.totalValue > 0 ? (
+                                  <span>{formatCurrency(sizeFifo.totalValue)}</span>
+                                ) : (
+                                  <span className="text-muted-foreground">-</span>
+                                )}
+                              </TableCell>
+                            )
+                          })}
+                        </TableRow>
+                      )}
+                      {/* FIFO oldest date row */}
+                      {fifoData && (
+                        <TableRow>
+                          <TableCell className="font-medium">I lager</TableCell>
+                          {variant.sizes.map(size => {
+                            const sizeFifo = getSizeFifo(size.EAN)
+                            return (
+                              <TableCell key={size.EAN} className="text-center text-xs">
+                                {sizeFifo?.oldestPurchaseDate ? (
+                                  <span className={getAgeColorClass(sizeFifo.maxAgeInDays)}>
+                                    {formatPeriod(sizeFifo.oldestPurchaseDate)}
+                                  </span>
+                                ) : (
+                                  <span className="text-muted-foreground">-</span>
+                                )}
+                              </TableCell>
+                            )
+                          })}
+                        </TableRow>
+                      )}
                     </TableBody>
                   </Table>
                 </div>

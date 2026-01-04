@@ -10,6 +10,11 @@ export async function middleware(request: NextRequest) {
     return authResponse;
   }
 
+  // Let cron endpoints pass through (they use CRON_SECRET for auth)
+  if (request.nextUrl.pathname.startsWith('/api/cron/')) {
+    return authResponse;
+  }
+
   // Check if user is authenticated
   const session = await auth0.getSession(request);
 

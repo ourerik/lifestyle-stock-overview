@@ -9,11 +9,60 @@ export interface StockHistoryItem {
   physicalQuantity: number
 }
 
+// Purchase delivery document stored in Elasticsearch
+export interface ESPurchaseDelivery {
+  id: string  // {productSizeId}_{deliveryId}
+  createdAt: string
+  EAN: string | null
+  productId: number
+  productName: string
+  productNumber: string
+  productVariantName: string
+  productVariantId: number
+  productVariantNumber: string
+  productSizeId: number
+  quantity: number
+  purchaseOrderDelivery: {
+    id: string
+    status: string
+    createdAt: string
+    purchaseOrderId: number
+    purchaseOrderCreatedAt: string
+    supplier: string
+  }
+  // Original currency values
+  currency: string             // Original currency code (USD, EUR, SEK)
+  exchangeRate: number         // Exchange rate to SEK at delivery date
+  unitCost: number
+  unitCustomsCost: number
+  unitShippingCost: number
+  unitTotalCost: number
+  totalProductCost: number
+  totalCustomsCost: number
+  totalShippingCost: number
+  totalCost: number
+  // SEK converted values
+  unitCostSEK: number
+  unitCustomsCostSEK: number
+  unitShippingCostSEK: number
+  unitTotalCostSEK: number
+  totalProductCostSEK: number
+  totalCustomsCostSEK: number
+  totalShippingCostSEK: number
+  totalCostSEK: number
+  error: boolean
+}
+
 type CompanyId = 'varg' | 'sneaky-steve'
 
 const COMPANY_INDEX_PREFIX: Record<CompanyId, string> = {
   'varg': 'varg_stock',
   'sneaky-steve': 'sneaky_stock',
+}
+
+const COMPANY_PO_DELIVERY_INDEX: Record<CompanyId, string> = {
+  'varg': 'varg_purchasing_order_deliveries',
+  'sneaky-steve': 'sneaky_purchasing_order_deliveries',
 }
 
 export class ElasticsearchConnector {
@@ -228,5 +277,124 @@ export class ElasticsearchConnector {
 
     console.log(`[ES History] Total items: ${allItems.length}`)
     return allItems
+  }
+
+  /**
+   * Get the maximum delivery ID currently indexed for a company
+   * Used for incremental sync from Centra
+   */
+  async getMaxDeliveryId(company: CompanyId): Promise<number | null> {
+    const index = COMPANY_PO_DELIVERY_INDEX[company]
+
+    try {
+      // Sort by delivery ID descending, get the first one
+      const result = await this.request<{
+        hits: {
+          hits: Array<{
+            _source: { purchaseOrderDelivery: { id: string } }
+          }>
+        }
+      }>(`/${index}/_search`, {
+        size: 1,
+        sort: [{ createdAt: 'desc' }],
+        _source: ['purchaseOrderDelivery.id'],
+      })
+
+      const hits = result.hits.hits
+      if (hits.length === 0) return null
+
+      const deliveryId = hits[0]._source.purchaseOrderDelivery.id
+      return parseInt(deliveryId, 10)
+    } catch (error) {
+      // Index might not exist yet
+      console.log(`[ES] No delivery index found for ${company}:`, error)
+      return null
+    }
+  }
+
+  /**
+   * Save purchase deliveries to Elasticsearch using bulk indexing
+   */
+  async savePurchaseDeliveries(company: CompanyId, deliveries: ESPurchaseDelivery[]): Promise<{ indexed: number; errors: number }> {
+    if (deliveries.length === 0) {
+      return { indexed: 0, errors: 0 }
+    }
+
+    const index = COMPANY_PO_DELIVERY_INDEX[company]
+
+    // Build bulk request body
+    // Format: action\ndocument\naction\ndocument\n...
+    const bulkBody = deliveries.flatMap(doc => [
+      JSON.stringify({ index: { _index: index, _id: doc.id } }),
+      JSON.stringify(doc),
+    ]).join('\n') + '\n'
+
+    const response = await fetch(`${this.baseUrl}/_bulk`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `ApiKey ${this.apiKey}`,
+        'Content-Type': 'application/x-ndjson',
+      },
+      body: bulkBody,
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`Elasticsearch bulk request failed: ${response.status} - ${errorText}`)
+    }
+
+    const result = await response.json() as {
+      errors: boolean
+      items: Array<{ index: { status: number; error?: object } }>
+    }
+
+    const errorCount = result.items.filter(item => item.index.error).length
+    const indexedCount = result.items.filter(item => !item.index.error).length
+
+    if (result.errors) {
+      console.log(`[ES] Bulk indexing completed with ${errorCount} errors`)
+    }
+
+    return { indexed: indexedCount, errors: errorCount }
+  }
+
+  /**
+   * Fetch all purchase deliveries for FIFO calculation
+   */
+  async fetchPurchaseDeliveries(company: CompanyId): Promise<ESPurchaseDelivery[]> {
+    const index = COMPANY_PO_DELIVERY_INDEX[company]
+    const allDeliveries: ESPurchaseDelivery[] = []
+    let searchAfter: unknown[] | undefined
+
+    do {
+      const body: Record<string, unknown> = {
+        size: 10000,
+        sort: [{ createdAt: 'asc' }, '_doc'],  // Oldest first for FIFO
+        _source: true,
+      }
+
+      if (searchAfter) {
+        body.search_after = searchAfter
+      }
+
+      const result = await this.request<{
+        hits: {
+          hits: Array<{
+            _source: ESPurchaseDelivery
+            sort: unknown[]
+          }>
+        }
+      }>(`/${index}/_search`, body)
+
+      const hits = result.hits.hits
+      if (hits.length === 0) break
+
+      allDeliveries.push(...hits.map(h => h._source))
+      searchAfter = hits[hits.length - 1].sort
+
+      if (hits.length < 10000) break
+    } while (true)
+
+    return allDeliveries
   }
 }
