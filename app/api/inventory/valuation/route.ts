@@ -9,7 +9,7 @@ import type { FifoValuationData } from '@/types/fifo'
 const VALID_COMPANIES: Exclude<CompanyId, 'all'>[] = ['varg', 'sneaky-steve']
 
 // Simple in-memory cache for valuation data
-let valuationCache: Map<string, { data: FifoValuationData; cachedAt: Date }> = new Map()
+const valuationCache: Map<string, { data: FifoValuationData; cachedAt: Date }> = new Map()
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000 // 24 hours
 
 function getFromCache(company: string): { data: FifoValuationData; cachedAt: Date } | null {

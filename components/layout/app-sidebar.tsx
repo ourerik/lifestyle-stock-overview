@@ -210,6 +210,7 @@ export function AppSidebar() {
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild>
+                    {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
                     <a href="/auth/logout" className="text-destructive">
                       <LogOut className="mr-2 h-4 w-4" />
                       Logga ut
@@ -219,6 +220,7 @@ export function AppSidebar() {
               </DropdownMenu>
             ) : (
               <SidebarMenuButton size="lg" asChild>
+                {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
                 <a href="/auth/login">
                   <User className="h-4 w-4" />
                   <span>Logga in</span>

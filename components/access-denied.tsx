@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { ShieldX, ArrowRight, LogOut } from 'lucide-react';
 import { useRoles } from '@/hooks/use-roles';
 import { COMPANIES, type CompanyId } from '@/config/companies';
@@ -64,13 +65,13 @@ export function AccessDenied({ requestedPath }: AccessDeniedProps) {
                       className="w-full justify-between"
                       asChild
                     >
-                      <a href="/">
+                      <Link href="/">
                         <span className="flex items-center gap-2">
                           <CompanyLogo companyId="all" className="h-4 w-4" />
                           Översikt - Alla bolag
                         </span>
                         <ArrowRight className="h-4 w-4" />
-                      </a>
+                      </Link>
                     </Button>
                   )}
                   {accessibleCompanies.map((companyId) => {
@@ -82,13 +83,13 @@ export function AccessDenied({ requestedPath }: AccessDeniedProps) {
                         className="w-full justify-between"
                         asChild
                       >
-                        <a href={`/${companyId}`}>
+                        <Link href={`/${companyId}`}>
                           <span className="flex items-center gap-2">
                             <CompanyLogo companyId={companyId} className="h-4 w-4" />
                             {company.name}
                           </span>
                           <ArrowRight className="h-4 w-4" />
-                        </a>
+                        </Link>
                       </Button>
                     );
                   })}
@@ -102,6 +103,7 @@ export function AccessDenied({ requestedPath }: AccessDeniedProps) {
                   Du har ingen behörighet i systemet. Kontakta en administratör för att få tillgång.
                 </p>
                 <Button variant="destructive" asChild>
+                  {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
                   <a href="/auth/logout">
                     <LogOut className="mr-2 h-4 w-4" />
                     Logga ut

@@ -9,7 +9,7 @@
     "lint": "eslint",
     "build:worker": "opennextjs-cloudflare build",
     "dev:worker": "opennextjs-cloudflare build && wrangler dev",
-    "deploy": "opennextjs-cloudflare deploy"
+    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy"
   },
   "dependencies": {
     "@auth0/nextjs-auth0": "^4.14.0",
