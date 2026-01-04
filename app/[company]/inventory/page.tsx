@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import { SidebarInset } from '@/components/ui/sidebar'
 import { Header } from '@/components/layout/header'
 import { InventoryPageView } from '@/components/inventory'
+import { RequireCompanyAccess } from '@/components/require-company-access'
 import { COMPANIES, CompanyId } from '@/config/companies'
 
 interface PageProps {
@@ -20,11 +21,13 @@ export default async function InventoryPage({ params }: PageProps) {
   const companyConfig = COMPANIES[companyId]
 
   return (
-    <SidebarInset>
-      <Header title={`Lager - ${companyConfig.name}`} />
-      <main className="flex-1 p-6">
-        <InventoryPageView companyId={companyId} />
-      </main>
-    </SidebarInset>
+    <RequireCompanyAccess companyId={companyId}>
+      <SidebarInset>
+        <Header title={`Lager - ${companyConfig.name}`} />
+        <main className="flex-1 p-6">
+          <InventoryPageView companyId={companyId} />
+        </main>
+      </SidebarInset>
+    </RequireCompanyAccess>
   )
 }

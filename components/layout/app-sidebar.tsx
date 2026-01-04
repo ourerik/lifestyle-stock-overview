@@ -3,6 +3,7 @@
 import { LayoutDashboard, Package, Truck, ChevronDown, LogOut, User } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useUser } from '@auth0/nextjs-auth0/client';
+import { useRoles } from '@/hooks/use-roles';
 import { COMPANY_LIST, COMPANIES, type CompanyId } from '@/config/companies';
 import { CompanyLogo } from '@/components/logos';
 import {
@@ -27,7 +28,21 @@ import {
 export function AppSidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, isLoading } = useUser();
+  const { user, isLoading: userLoading } = useUser();
+  const { allowedCompanies, hasOverviewAccess, isLoading: rolesLoading } = useRoles();
+
+  const isLoading = userLoading || rolesLoading;
+
+  // Filter companies based on user access
+  const accessibleCompanies = COMPANY_LIST.filter((company) => {
+    if (company.id === 'all') {
+      return hasOverviewAccess;
+    }
+    return allowedCompanies.includes(company.id as CompanyId);
+  });
+
+  // Show company selector only if user has access to more than one option
+  const showCompanySelector = accessibleCompanies.length > 1;
 
   // Determine current company from URL
   const pathSegments = pathname.split('/').filter(Boolean);
@@ -49,40 +64,52 @@ export function AppSidebar() {
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <SidebarMenuButton
-                  size="lg"
-                  className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
-                >
-                  <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-white">
-                    <CompanyLogo companyId={currentCompany} className="size-4" />
-                  </div>
-                  <div className="grid flex-1 text-left text-sm leading-tight">
-                    <span className="truncate font-semibold">{companyConfig.name}</span>
-                    <span className="truncate text-xs">{companyConfig.displayName}</span>
-                  </div>
-                  <ChevronDown className="ml-auto" />
-                </SidebarMenuButton>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                className="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg"
-                align="start"
-                side="bottom"
-                sideOffset={4}
-              >
-                {COMPANY_LIST.map((company) => (
-                  <DropdownMenuItem
-                    key={company.id}
-                    onClick={() => handleCompanySelect(company.id as CompanyId)}
-                    className={currentCompany === company.id ? 'bg-accent' : ''}
+            {showCompanySelector ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <SidebarMenuButton
+                    size="lg"
+                    className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
                   >
-                    <CompanyLogo companyId={company.id as CompanyId} className="mr-2 h-4 w-4" />
-                    {company.name}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
+                    <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-white">
+                      <CompanyLogo companyId={currentCompany} className="size-4" />
+                    </div>
+                    <div className="grid flex-1 text-left text-sm leading-tight">
+                      <span className="truncate font-semibold">{companyConfig.name}</span>
+                      <span className="truncate text-xs">{companyConfig.displayName}</span>
+                    </div>
+                    <ChevronDown className="ml-auto" />
+                  </SidebarMenuButton>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  className="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg"
+                  align="start"
+                  side="bottom"
+                  sideOffset={4}
+                >
+                  {accessibleCompanies.map((company) => (
+                    <DropdownMenuItem
+                      key={company.id}
+                      onClick={() => handleCompanySelect(company.id as CompanyId)}
+                      className={currentCompany === company.id ? 'bg-accent' : ''}
+                    >
+                      <CompanyLogo companyId={company.id as CompanyId} className="mr-2 h-4 w-4" />
+                      {company.name}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <SidebarMenuButton size="lg" className="cursor-default">
+                <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-white">
+                  <CompanyLogo companyId={currentCompany} className="size-4" />
+                </div>
+                <div className="grid flex-1 text-left text-sm leading-tight">
+                  <span className="truncate font-semibold">{companyConfig.name}</span>
+                  <span className="truncate text-xs">{companyConfig.displayName}</span>
+                </div>
+              </SidebarMenuButton>
+            )}
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>

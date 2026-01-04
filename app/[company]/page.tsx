@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import { SidebarInset } from '@/components/ui/sidebar';
 import { Header } from '@/components/layout/header';
 import { DashboardView } from '@/components/dashboard';
+import { RequireCompanyAccess } from '@/components/require-company-access';
 import { COMPANIES, CompanyId } from '@/config/companies';
 
 interface PageProps {
@@ -20,11 +21,13 @@ export default async function CompanyDashboardPage({ params }: PageProps) {
   const companyConfig = COMPANIES[companyId];
 
   return (
-    <SidebarInset>
-      <Header title={`Dashboard - ${companyConfig.name}`} />
-      <main className="flex-1 p-6">
-        <DashboardView companyId={companyId} />
-      </main>
-    </SidebarInset>
+    <RequireCompanyAccess companyId={companyId}>
+      <SidebarInset>
+        <Header title={`Dashboard - ${companyConfig.name}`} />
+        <main className="flex-1 p-6">
+          <DashboardView companyId={companyId} />
+        </main>
+      </SidebarInset>
+    </RequireCompanyAccess>
   );
 }
