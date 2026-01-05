@@ -42,6 +42,7 @@ export interface PerformanceSummary {
   totalTbPercent: number
   totalTbWithAds: number
   totalTbPercentWithAds: number
+  totalAvgDiscountPercent: number
   productCount: number
   orderCount: number
 }
@@ -137,4 +138,71 @@ export interface ProductAggregationBucket {
   avg_discount: { value: number }
   unique_orders: { value: number }
   customer_ages: { values: number[] }
+}
+
+// ==================== Drill-down Types ====================
+
+// Rolling 3-month period
+export interface RollingPeriod {
+  label: string              // "Okt-Dec", "Jul-Sep"
+  startDate: string          // "2025-10-01"
+  endDate: string            // "2025-12-31"
+  periodIndex: number        // 0 = most recent, 1 = next oldest, etc
+}
+
+// Metrics for a period
+export interface PeriodMetrics {
+  period: RollingPeriod
+  salesQuantity: number
+  returnQuantity: number
+  returnRate: number         // %
+  medianCustomerAge: number | null
+  avgDiscountPercent: number
+  turnover: number
+  costs: number
+  tb: number
+  tbPercent: number
+}
+
+// Variant with period data
+export interface VariantPerformance {
+  variantNumber: string
+  variantName: string
+  image: string | null
+
+  // Total for the whole year
+  totalSalesQuantity: number
+  totalReturnQuantity: number
+  totalReturnRate: number
+  totalTurnover: number
+  totalCosts: number
+  totalTb: number
+  totalTbPercent: number
+  totalAvgDiscountPercent: number
+  medianCustomerAge: number | null
+
+  // Per 3-month period (4 periods)
+  periods: PeriodMetrics[]
+}
+
+// Detail data for a product
+export interface ProductPerformanceDetail {
+  productNumber: string
+  productName: string
+  image: string | null
+
+  // Total for the whole year (same as in main table)
+  summary: ProductPerformance
+
+  // Per variant with period data
+  variants: VariantPerformance[]
+
+  // Period definitions (for column headers)
+  periodDefinitions: RollingPeriod[]
+}
+
+export interface ProductPerformanceDetailResponse {
+  data: ProductPerformanceDetail
+  cachedAt: string
+  fromCache: boolean
 }

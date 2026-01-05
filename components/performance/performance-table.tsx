@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
+import { ArrowUpDown, ArrowUp, ArrowDown, ChevronRight } from 'lucide-react'
 import {
   Table,
   TableBody,
@@ -23,16 +23,15 @@ type SortField =
   | 'costs'
   | 'tb'
   | 'tbPercent'
-  | 'tbWithAds'
-  | 'tbPercentWithAds'
   | 'avgDiscountPercent'
 
 interface PerformanceTableProps {
   products: ProductPerformance[]
   isLoading?: boolean
+  onSelectProduct?: (product: ProductPerformance) => void
 }
 
-export function PerformanceTable({ products, isLoading }: PerformanceTableProps) {
+export function PerformanceTable({ products, isLoading, onSelectProduct }: PerformanceTableProps) {
   const [sortBy, setSortBy] = useState<SortField>('turnover')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
 
@@ -155,22 +154,6 @@ export function PerformanceTable({ products, isLoading }: PerformanceTableProps)
               className="text-right w-20"
             />
             <SortableHeader
-              field="tbWithAds"
-              label="TB m. ads"
-              sortBy={sortBy}
-              sortOrder={sortOrder}
-              onSort={handleSort}
-              className="text-right w-24"
-            />
-            <SortableHeader
-              field="tbPercentWithAds"
-              label="TB% m. ads"
-              sortBy={sortBy}
-              sortOrder={sortOrder}
-              onSort={handleSort}
-              className="text-right w-24"
-            />
-            <SortableHeader
               field="avgDiscountPercent"
               label="Rabatt"
               sortBy={sortBy}
@@ -178,11 +161,16 @@ export function PerformanceTable({ products, isLoading }: PerformanceTableProps)
               onSort={handleSort}
               className="text-right w-20"
             />
+            <TableHead className="w-8"></TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {sortedProducts.map((product) => (
-            <TableRow key={product.productNumber}>
+            <TableRow
+              key={product.productNumber}
+              className={onSelectProduct ? 'cursor-pointer hover:bg-muted/50' : ''}
+              onClick={() => onSelectProduct?.(product)}
+            >
               <TableCell>
                 <div>
                   <div className="font-medium">{product.productName}</div>
@@ -236,28 +224,15 @@ export function PerformanceTable({ products, isLoading }: PerformanceTableProps)
                   {product.tbPercent}%
                 </span>
               </TableCell>
-              <TableCell className="text-right font-medium">
-                <span className={product.tbWithAds < 0 ? 'text-destructive' : ''}>
-                  {formatCurrency(product.tbWithAds)}
-                </span>
-              </TableCell>
-              <TableCell className="text-right">
-                <span
-                  className={
-                    product.tbPercentWithAds < 0
-                      ? 'text-destructive font-medium'
-                      : product.tbPercentWithAds < 20
-                      ? 'text-yellow-600'
-                      : 'text-green-600 font-medium'
-                  }
-                >
-                  {product.tbPercentWithAds}%
-                </span>
-              </TableCell>
               <TableCell className="text-right text-muted-foreground">
                 {product.avgDiscountPercent > 0
                   ? `${product.avgDiscountPercent}%`
                   : '-'}
+              </TableCell>
+              <TableCell className="w-8">
+                {onSelectProduct && (
+                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                )}
               </TableCell>
             </TableRow>
           ))}
@@ -285,12 +260,13 @@ function SortableHeader({
   className = '',
 }: SortableHeaderProps) {
   const isActive = sortBy === field
+  const isRightAligned = className.includes('text-right')
 
   return (
     <TableHead className={className}>
       <button
         onClick={() => onSort(field)}
-        className="flex items-center gap-1 hover:text-foreground transition-colors"
+        className={`flex items-center gap-1 hover:text-foreground transition-colors ${isRightAligned ? 'ml-auto' : ''}`}
       >
         {label}
         {isActive ? (

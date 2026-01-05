@@ -727,7 +727,10 @@ export class ElasticsearchConnector {
             total_costs: { value: number }
             avg_discount: { value: number }
             unique_orders: { value: number }
-            customer_ages: { values: { '50.0': number } }
+            customer_ages_filtered: {
+              doc_count: number
+              median: { values: { '50.0': number | null } }
+            }
           }>
         }
       }
@@ -788,11 +791,18 @@ export class ElasticsearchConnector {
                 field: 'orderId.keyword',
               },
             },
-            // Get customer ages for median calculation (filter out 0 values)
-            customer_ages: {
-              percentiles: {
-                field: 'customerAge',
-                percents: [50],
+            // Get customer ages for median calculation (filter out 0 values = unknown)
+            customer_ages_filtered: {
+              filter: {
+                range: { customerAge: { gt: 0 } },
+              },
+              aggs: {
+                median: {
+                  percentiles: {
+                    field: 'customerAge',
+                    percents: [50],
+                  },
+                },
               },
             },
           },
@@ -816,7 +826,7 @@ export class ElasticsearchConnector {
       avgDiscountPercent: bucket.avg_discount.value || 0,
       orderCount: bucket.unique_orders.value || 0,
       customerAges: [], // We'll use percentile instead
-      medianAge: bucket.customer_ages.values['50.0'] || null,
+      medianAge: bucket.customer_ages_filtered?.median?.values?.['50.0'] || null,
     }))
 
     return { products, totalOrderCount }
@@ -961,6 +971,141 @@ export class ElasticsearchConnector {
     }
 
     console.log(`[ES] Deleted ad cost for ${company}: ${id}`)
+  }
+
+  // ==================== Product Performance Detail ====================
+
+  /**
+   * Fetch detailed performance data for a single product with variant and period breakdown
+   */
+  async fetchProductPerformanceDetail(
+    company: CompanyId,
+    productNumber: string
+  ): Promise<{
+    variants: Array<{
+      variantNumber: string
+      variantName: string
+      periods: Array<{
+        periodKey: string
+        salesQuantity: number
+        returnQuantity: number
+        turnover: number
+        costs: number
+        avgDiscountPercent: number
+        medianCustomerAge: number | null
+      }>
+    }>
+  }> {
+    const index = COMPANY_SALES_ECOM_INDEX[company]
+
+    console.log(`[ES Performance Detail] Fetching ${productNumber} from ${index}`)
+
+    // Use date_range aggregation for 4 rolling 3-month periods
+    const result = await this.request<{
+      aggregations?: {
+        by_variant: {
+          buckets: Array<{
+            key: string
+            doc_count: number
+            variant_name: { buckets: Array<{ key: string }> }
+            by_period: {
+              buckets: Array<{
+                key: string
+                from_as_string?: string
+                to_as_string?: string
+                doc_count: number
+                sales: { value: number }
+                returns: { value: number }
+                turnover: { value: number }
+                costs: { value: number }
+                avg_discount: { value: number | null }
+                customer_ages_filtered: {
+                  doc_count: number
+                  median: { values: { '50.0': number | null } }
+                }
+              }>
+            }
+          }>
+        }
+      }
+    }>(`/${index}/_search`, {
+      size: 0,
+      query: {
+        bool: {
+          filter: [
+            { term: { 'productNumber.keyword': productNumber } },
+            { range: { orderDate: { gte: 'now-12M' } } },
+          ],
+        },
+      },
+      aggs: {
+        by_variant: {
+          terms: {
+            field: 'variantNumber.keyword',
+            size: 100,
+          },
+          aggs: {
+            variant_name: {
+              terms: {
+                field: 'variantName.keyword',
+                size: 1,
+              },
+            },
+            by_period: {
+              date_range: {
+                field: 'orderDate',
+                ranges: [
+                  { key: '0-3m', from: 'now-3M', to: 'now' },
+                  { key: '3-6m', from: 'now-6M', to: 'now-3M' },
+                  { key: '6-9m', from: 'now-9M', to: 'now-6M' },
+                  { key: '9-12m', from: 'now-12M', to: 'now-9M' },
+                ],
+              },
+              aggs: {
+                sales: { sum: { field: 'quantity' } },
+                returns: { sum: { field: 'returnedQuantity' } },
+                turnover: { sum: { field: 'totalPriceReturnsAdjusted' } },
+                costs: { sum: { field: 'orderLineTotalCost' } },
+                avg_discount: { avg: { field: 'discountPercent' } },
+                customer_ages_filtered: {
+                  filter: {
+                    range: { customerAge: { gt: 0 } },
+                  },
+                  aggs: {
+                    median: {
+                      percentiles: {
+                        field: 'customerAge',
+                        percents: [50],
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    })
+
+    const variantBuckets = result.aggregations?.by_variant.buckets || []
+
+    console.log(`[ES Performance Detail] Found ${variantBuckets.length} variants`)
+
+    const variants = variantBuckets.map(variantBucket => ({
+      variantNumber: variantBucket.key,
+      variantName: variantBucket.variant_name.buckets[0]?.key || variantBucket.key,
+      periods: variantBucket.by_period.buckets.map(periodBucket => ({
+        periodKey: periodBucket.key,
+        salesQuantity: periodBucket.sales.value || 0,
+        returnQuantity: periodBucket.returns.value || 0,
+        turnover: periodBucket.turnover.value || 0,
+        costs: periodBucket.costs.value || 0,
+        avgDiscountPercent: periodBucket.avg_discount.value || 0,
+        medianCustomerAge: periodBucket.customer_ages_filtered?.median?.values?.['50.0'] || null,
+      })),
+    }))
+
+    return { variants }
   }
 
   // ==================== Exchange Rates ====================

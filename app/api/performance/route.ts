@@ -145,8 +145,16 @@ export async function GET(request: NextRequest) {
     })
 
     // Calculate summary
+    const totalSalesQuantity = products.reduce((sum, p) => sum + p.salesQuantity, 0)
+
+    // Calculate weighted average discount (weighted by sales quantity)
+    const weightedDiscountSum = products.reduce((sum, p) => sum + (p.avgDiscountPercent * p.salesQuantity), 0)
+    const totalAvgDiscountPercent = totalSalesQuantity > 0
+      ? Math.round((weightedDiscountSum / totalSalesQuantity) * 10) / 10
+      : 0
+
     const summary: PerformanceSummary = {
-      totalSalesQuantity: products.reduce((sum, p) => sum + p.salesQuantity, 0),
+      totalSalesQuantity,
       totalReturnQuantity: products.reduce((sum, p) => sum + p.returnQuantity, 0),
       totalReturnRate: 0,
       totalTurnover: products.reduce((sum, p) => sum + p.turnover, 0),
@@ -155,6 +163,7 @@ export async function GET(request: NextRequest) {
       totalTbPercent: 0,
       totalTbWithAds: products.reduce((sum, p) => sum + p.tbWithAds, 0),
       totalTbPercentWithAds: 0,
+      totalAvgDiscountPercent,
       productCount: products.length,
       orderCount: totalOrderCount,
     }
