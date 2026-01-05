@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { PerformanceView } from './performance-view'
 import type { PerformanceData } from '@/types/performance'
 import type { CompanyId } from '@/config/companies'
@@ -16,6 +17,14 @@ interface PerformancePageViewProps {
 }
 
 export type PerformancePeriod = '1y' | '9m' | '6m' | '3m' | '1m'
+
+const VALID_PERIODS: PerformancePeriod[] = ['1y', '9m', '6m', '3m', '1m']
+const PERIOD_STORAGE_KEY = 'performance-period'
+const DEFAULT_PERIOD: PerformancePeriod = '1y'
+
+function isValidPeriod(value: string | null): value is PerformancePeriod {
+  return value !== null && VALID_PERIODS.includes(value as PerformancePeriod)
+}
 
 // Returns need time to come in, so we always offset by 14 days
 const RETURN_DELAY_DAYS = 14
@@ -60,6 +69,10 @@ function getDateRangeForPeriod(period: PerformancePeriod, yearOffset = 0): { sta
 }
 
 export function PerformancePageView({ companyId }: PerformancePageViewProps) {
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const pathname = usePathname()
+
   const [data, setData] = useState<PerformanceData | null>(null)
   const [previousData, setPreviousData] = useState<PerformanceData | null>(null)
   const [cachedAt, setCachedAt] = useState<Date | null>(null)
@@ -68,7 +81,27 @@ export function PerformancePageView({ companyId }: PerformancePageViewProps) {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const [selectedPeriod, setSelectedPeriod] = useState<PerformancePeriod>('1y')
+  // Initialize period from URL, localStorage, or default
+  const getInitialPeriod = useCallback((): PerformancePeriod => {
+    // 1. Check URL first
+    const urlPeriod = searchParams.get('period')
+    if (isValidPeriod(urlPeriod)) {
+      return urlPeriod
+    }
+
+    // 2. Check localStorage
+    if (typeof window !== 'undefined') {
+      const storedPeriod = localStorage.getItem(PERIOD_STORAGE_KEY)
+      if (isValidPeriod(storedPeriod)) {
+        return storedPeriod
+      }
+    }
+
+    // 3. Default
+    return DEFAULT_PERIOD
+  }, [searchParams])
+
+  const [selectedPeriod, setSelectedPeriod] = useState<PerformancePeriod>(getInitialPeriod)
   const dateRange = getDateRangeForPeriod(selectedPeriod)
   const previousDateRange = getDateRangeForPeriod(selectedPeriod, 1)
 
@@ -134,9 +167,17 @@ export function PerformancePageView({ companyId }: PerformancePageViewProps) {
     fetchData(true)
   }
 
-  const handlePeriodChange = (period: PerformancePeriod) => {
+  const handlePeriodChange = useCallback((period: PerformancePeriod) => {
     setSelectedPeriod(period)
-  }
+
+    // Save to localStorage
+    localStorage.setItem(PERIOD_STORAGE_KEY, period)
+
+    // Update URL with period parameter (preserve other params like product)
+    const params = new URLSearchParams(searchParams.toString())
+    params.set('period', period)
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false })
+  }, [searchParams, router, pathname])
 
   return (
     <PerformanceView

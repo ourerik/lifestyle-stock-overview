@@ -24,6 +24,14 @@ const PERIOD_LABELS: Record<PerformancePeriod, string> = {
   '1m': '1 mån',
 }
 
+const PERIOD_TO_MONTHS: Record<PerformancePeriod, number> = {
+  '1y': 12,
+  '9m': 9,
+  '6m': 6,
+  '3m': 3,
+  '1m': 1,
+}
+
 interface PerformanceViewProps {
   data: PerformanceData | null
   previousData: PerformanceData | null
@@ -132,6 +140,12 @@ export function PerformanceView({
     if (!productParam || !data) return null
     return data.products.find(p => p.productNumber === productParam) || null
   }, [productParam, data])
+
+  // Find previous period's product for comparison
+  const previousProduct = useMemo(() => {
+    if (!productParam || !previousData) return null
+    return previousData.products.find(p => p.productNumber === productParam) || null
+  }, [productParam, previousData])
 
   // Update URL when selecting/deselecting product
   const updateProductParam = useCallback((product: ProductPerformance | null) => {
@@ -307,11 +321,15 @@ export function PerformanceView({
       {/* Detail Sheet */}
       <PerformanceDetailSheet
         product={selectedProduct}
+        previousProduct={previousProduct}
         open={!!selectedProduct}
         onOpenChange={(open) => {
           if (!open) updateProductParam(null)
         }}
         companyId={companyId}
+        dateRange={dateRange}
+        periodMonths={PERIOD_TO_MONTHS[selectedPeriod]}
+        periodLabel={PERIOD_LABELS[selectedPeriod]}
       />
     </div>
   )

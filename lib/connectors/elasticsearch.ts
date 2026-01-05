@@ -977,10 +977,12 @@ export class ElasticsearchConnector {
 
   /**
    * Fetch detailed performance data for a single product with variant and period breakdown
+   * @param yearOffset - 0 for current year, 1 for same period last year (for YoY comparison)
    */
   async fetchProductPerformanceDetail(
     company: CompanyId,
-    productNumber: string
+    productNumber: string,
+    yearOffset = 0
   ): Promise<{
     variants: Array<{
       variantNumber: string
@@ -998,9 +1000,32 @@ export class ElasticsearchConnector {
   }> {
     const index = COMPANY_SALES_ECOM_INDEX[company]
 
-    console.log(`[ES Performance Detail] Fetching ${productNumber} from ${index}`)
+    // Always use 12-month rolling periods with 14-day offset
+    // yearOffset shifts all dates back by 1 year for YoY comparison
+    const yearSuffix = yearOffset > 0 ? `-${yearOffset}y` : ''
+    console.log(`[ES Performance Detail] Fetching ${productNumber} from ${index} (rolling 12M with 14d offset${yearOffset > 0 ? `, yearOffset=${yearOffset}` : ''})`)
 
-    // Use date_range aggregation for 4 rolling 3-month periods
+    // Always filter to last 12 months with 14-day offset (to allow returns to settle)
+    // If yearOffset > 0, shift back by that many years
+    const dateFilter = {
+      range: {
+        orderDate: {
+          gte: `now-12M-14d${yearSuffix}`,
+          lte: `now-14d${yearSuffix}`,
+        },
+      },
+    }
+
+    // Always use rolling 12-month periods with 14-day offset
+    // If yearOffset > 0, shift all periods back by that many years
+    const periodRanges = [
+      { key: '0-3m', from: `now-3M-14d${yearSuffix}`, to: `now-14d${yearSuffix}` },
+      { key: '3-6m', from: `now-6M-14d${yearSuffix}`, to: `now-3M-14d${yearSuffix}` },
+      { key: '6-9m', from: `now-9M-14d${yearSuffix}`, to: `now-6M-14d${yearSuffix}` },
+      { key: '9-12m', from: `now-12M-14d${yearSuffix}`, to: `now-9M-14d${yearSuffix}` },
+    ]
+
+    // Use date_range aggregation for period breakdown
     const result = await this.request<{
       aggregations?: {
         by_variant: {
@@ -1034,7 +1059,7 @@ export class ElasticsearchConnector {
         bool: {
           filter: [
             { term: { 'productNumber.keyword': productNumber } },
-            { range: { orderDate: { gte: 'now-12M' } } },
+            dateFilter,
           ],
         },
       },
@@ -1054,12 +1079,7 @@ export class ElasticsearchConnector {
             by_period: {
               date_range: {
                 field: 'orderDate',
-                ranges: [
-                  { key: '0-3m', from: 'now-3M', to: 'now' },
-                  { key: '3-6m', from: 'now-6M', to: 'now-3M' },
-                  { key: '6-9m', from: 'now-9M', to: 'now-6M' },
-                  { key: '9-12m', from: 'now-12M', to: 'now-9M' },
-                ],
+                ranges: periodRanges,
               },
               aggs: {
                 sales: { sum: { field: 'quantity' } },

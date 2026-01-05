@@ -203,6 +203,7 @@ export interface ProductPerformanceDetail {
 
 export interface ProductPerformanceDetailResponse {
   data: ProductPerformanceDetail
+  previousVariants: VariantPerformance[] | null  // Same period last year, for YoY comparison
   cachedAt: string
   fromCache: boolean
 }
