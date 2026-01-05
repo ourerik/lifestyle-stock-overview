@@ -48,7 +48,12 @@ export class FifoCalculator {
       console.log(`[FIFO] Zettle inventory provided with ${zettleInventory.size} items`)
     }
 
-    // Group both sources by EAN for quick lookup
+    // Group both sources by size key (variantId + sizeNumber) for reliable matching
+    // This is more reliable than EAN which may be null for older deliveries
+    const deliveriesBySizeKey = this.groupDeliveriesBySizeKey(deliveries)
+    const stockChangesBySizeKey = this.groupStockChangesBySizeKey(stockChanges)
+
+    // Also group by EAN for Zettle-only items (which only have EAN, not variantId)
     const deliveriesByEAN = this.groupDeliveriesByEAN(deliveries)
     const stockChangesByEAN = this.groupStockChangesByEAN(stockChanges)
 
@@ -65,12 +70,21 @@ export class FifoCalculator {
 
       if (totalQty <= 0) continue
 
+      // Use size key for matching deliveries (more reliable than EAN)
+      const sizeKey = this.createSizeKey(stockItem.variantId, stockItem.sizeNumber)
+      const matchedDeliveries = deliveriesBySizeKey.get(sizeKey) || []
+
+      // Debug logging for matching
+      if (stockItem.productNumber === 'AW12-W' && stockItem.variantName === 'Off White') {
+        console.log(`[FIFO DEBUG] ${stockItem.size}: sizeKey=${sizeKey}, deliveries=${matchedDeliveries.length}, stockChanges=${(stockChangesBySizeKey.get(sizeKey) || []).length}`)
+      }
+
       const sizeValuation = this.calculateSizeValuation(
         stockItem,
         warehouseQty,
         storeQty,
-        deliveriesByEAN.get(stockItem.EAN) || [],
-        stockChangesByEAN.get(stockItem.EAN) || []
+        matchedDeliveries,
+        stockChangesBySizeKey.get(sizeKey) || []
       )
 
       sizeValuations.set(stockItem.EAN, sizeValuation)
@@ -107,7 +121,62 @@ export class FifoCalculator {
   }
 
   /**
+   * Create a matching key for deliveries/stock using variantId + sizeNumber
+   * This is more reliable than EAN which may be null for older deliveries
+   */
+  private createSizeKey(variantId: number, sizeNumber: string | null): string {
+    return `${variantId}-${sizeNumber || 'null'}`
+  }
+
+  /**
+   * Group deliveries by size key (variantId + sizeNumber), sorted oldest first
+   */
+  private groupDeliveriesBySizeKey(deliveries: ESPurchaseDelivery[]): Map<string, ESPurchaseDelivery[]> {
+    const map = new Map<string, ESPurchaseDelivery[]>()
+
+    for (const delivery of deliveries) {
+      const key = this.createSizeKey(delivery.productVariantId, delivery.sizeNumber)
+
+      if (!map.has(key)) {
+        map.set(key, [])
+      }
+      map.get(key)!.push(delivery)
+    }
+
+    // Sort each group by createdAt (oldest first for FIFO)
+    for (const [, group] of map) {
+      group.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+    }
+
+    return map
+  }
+
+  /**
+   * Group stock changes by size key (variantId + sizeNumber), sorted oldest first
+   */
+  private groupStockChangesBySizeKey(stockChanges: ESStockChange[]): Map<string, ESStockChange[]> {
+    const map = new Map<string, ESStockChange[]>()
+
+    for (const change of stockChanges) {
+      const key = this.createSizeKey(change.productVariantId, change.sizeNumber)
+
+      if (!map.has(key)) {
+        map.set(key, [])
+      }
+      map.get(key)!.push(change)
+    }
+
+    // Sort each group by createdAt (oldest first for FIFO)
+    for (const [, group] of map) {
+      group.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+    }
+
+    return map
+  }
+
+  /**
    * Group deliveries by EAN, sorted oldest first
+   * Used as fallback for Zettle-only items that don't have variantId
    */
   private groupDeliveriesByEAN(deliveries: ESPurchaseDelivery[]): Map<string, ESPurchaseDelivery[]> {
     const map = new Map<string, ESPurchaseDelivery[]>()
@@ -131,6 +200,7 @@ export class FifoCalculator {
 
   /**
    * Group stock changes by EAN, sorted oldest first
+   * Used as fallback for Zettle-only items that don't have variantId
    */
   private groupStockChangesByEAN(stockChanges: ESStockChange[]): Map<string, ESStockChange[]> {
     const map = new Map<string, ESStockChange[]>()
@@ -171,20 +241,34 @@ export class FifoCalculator {
     const now = new Date()
     const layers: InventoryLayer[] = []
     const totalStock = warehouseQty + storeQty
-    let remainingStock = totalStock
 
     // Track quantity by source
     const quantityBySource = { delivery: 0, stockChange: 0, unknown: 0 }
 
-    // STEP 1: Apply FIFO using purchase deliveries (most trusted)
-    for (const delivery of deliveries) {
-      if (remainingStock <= 0) break
+    // FIFO: Calculate how much was SOLD, then determine what REMAINS
+    // Priority: Use deliveries if available, otherwise fall back to stock changes
+    const totalDelivered = deliveries.reduce((sum, d) => sum + d.quantity, 0)
+    const totalFromStockChanges = stockChanges.reduce((sum, c) => sum + c.quantity, 0)
 
+    // If we have deliveries, use ONLY deliveries for FIFO (stock changes are fallback only)
+    // If no deliveries, use stock changes as the source
+    const useDeliveriesOnly = totalDelivered > 0
+    const totalReceived = useDeliveriesOnly ? totalDelivered : totalFromStockChanges
+
+    // Calculate how much was sold (consumed from oldest first)
+    let remainingToSell = Math.max(0, totalReceived - totalStock)
+
+    // STEP 1: Apply FIFO - consume sales from deliveries first (oldest first)
+    for (const delivery of deliveries) {
       const deliveryDate = new Date(delivery.createdAt)
       const ageInDays = Math.floor((now.getTime() - deliveryDate.getTime()) / (1000 * 60 * 60 * 24))
 
-      // How much of this delivery is still in stock?
-      const remainingFromDelivery = Math.min(remainingStock, delivery.quantity)
+      // How much of this delivery was sold?
+      const soldFromDelivery = Math.min(remainingToSell, delivery.quantity)
+      remainingToSell -= soldFromDelivery
+
+      // What remains from this delivery?
+      const remainingFromDelivery = delivery.quantity - soldFromDelivery
 
       if (remainingFromDelivery > 0) {
         // Use SEK-converted cost if available, otherwise fall back to original
@@ -205,19 +289,21 @@ export class FifoCalculator {
         })
 
         quantityBySource.delivery += remainingFromDelivery
-        remainingStock -= remainingFromDelivery
       }
     }
 
-    // STEP 2: If still remaining stock, use stock changes (less trusted)
+    // STEP 2: Only use stock changes if NO deliveries exist (fallback only)
+    if (!useDeliveriesOnly) {
     for (const change of stockChanges) {
-      if (remainingStock <= 0) break
-
       const changeDate = new Date(change.createdAt)
       const ageInDays = Math.floor((now.getTime() - changeDate.getTime()) / (1000 * 60 * 60 * 24))
 
-      // How much of this stock change is still in stock?
-      const remainingFromChange = Math.min(remainingStock, change.quantity)
+      // How much of this stock change was sold?
+      const soldFromChange = Math.min(remainingToSell, change.quantity)
+      remainingToSell -= soldFromChange
+
+      // What remains from this stock change?
+      const remainingFromChange = change.quantity - soldFromChange
 
       if (remainingFromChange > 0) {
         // Use SEK-converted cost
@@ -238,13 +324,14 @@ export class FifoCalculator {
         })
 
         quantityBySource.stockChange += remainingFromChange
-        remainingStock -= remainingFromChange
       }
     }
+    } // End of useDeliveriesOnly check
 
-    // STEP 3: Any remaining stock has unknown cost
-    if (remainingStock > 0) {
-      quantityBySource.unknown += remainingStock
+    // STEP 3: Any stock without matching deliveries/changes has unknown cost
+    const accountedStock = quantityBySource.delivery + quantityBySource.stockChange
+    if (totalStock > accountedStock) {
+      quantityBySource.unknown += totalStock - accountedStock
       // Note: We don't create a layer for unknown items since we have no cost data
     }
 
@@ -259,6 +346,11 @@ export class FifoCalculator {
       primarySource = 'delivery'
     } else if (quantityBySource.stockChange > 0) {
       primarySource = 'stockChange'
+    }
+
+    // Debug: Log the calculation results
+    if (stockItem.productNumber === 'AW12-W' && stockItem.variantName === 'Off White') {
+      console.log(`[FIFO CALC] ${stockItem.size}: totalDelivered=${totalDelivered}, totalStock=${totalStock}, remainingToSell=${Math.max(0, totalReceived - totalStock)}, quantityBySource=${JSON.stringify(quantityBySource)}, primarySource=${primarySource}`)
     }
 
     // Calculate value distribution by location (proportional)
@@ -304,17 +396,28 @@ export class FifoCalculator {
 
     const now = new Date()
     const layers: InventoryLayer[] = []
-    let remainingStock = storeQty
 
     const quantityBySource = { delivery: 0, stockChange: 0, unknown: 0 }
 
-    // Apply same FIFO logic
-    for (const delivery of deliveries) {
-      if (remainingStock <= 0) break
+    // FIFO: Calculate how much was SOLD, then determine what REMAINS
+    const totalDelivered = deliveries.reduce((sum, d) => sum + d.quantity, 0)
+    const totalFromStockChanges = stockChanges.reduce((sum, c) => sum + c.quantity, 0)
+    const totalReceived = totalDelivered + totalFromStockChanges
 
+    // Calculate how much was sold (consumed from oldest first)
+    let remainingToSell = Math.max(0, totalReceived - storeQty)
+
+    // Apply FIFO - consume sales from deliveries first (oldest first)
+    for (const delivery of deliveries) {
       const deliveryDate = new Date(delivery.createdAt)
       const ageInDays = Math.floor((now.getTime() - deliveryDate.getTime()) / (1000 * 60 * 60 * 24))
-      const remainingFromDelivery = Math.min(remainingStock, delivery.quantity)
+
+      // How much of this delivery was sold?
+      const soldFromDelivery = Math.min(remainingToSell, delivery.quantity)
+      remainingToSell -= soldFromDelivery
+
+      // What remains from this delivery?
+      const remainingFromDelivery = delivery.quantity - soldFromDelivery
 
       if (remainingFromDelivery > 0) {
         const unitCostSEK = delivery.unitTotalCostSEK ?? delivery.unitTotalCost
@@ -334,16 +437,19 @@ export class FifoCalculator {
         })
 
         quantityBySource.delivery += remainingFromDelivery
-        remainingStock -= remainingFromDelivery
       }
     }
 
     for (const change of stockChanges) {
-      if (remainingStock <= 0) break
-
       const changeDate = new Date(change.createdAt)
       const ageInDays = Math.floor((now.getTime() - changeDate.getTime()) / (1000 * 60 * 60 * 24))
-      const remainingFromChange = Math.min(remainingStock, change.quantity)
+
+      // How much of this stock change was sold?
+      const soldFromChange = Math.min(remainingToSell, change.quantity)
+      remainingToSell -= soldFromChange
+
+      // What remains from this stock change?
+      const remainingFromChange = change.quantity - soldFromChange
 
       if (remainingFromChange > 0) {
         const unitCostSEK = change.unitCostSEK ?? change.unitCost
@@ -363,12 +469,13 @@ export class FifoCalculator {
         })
 
         quantityBySource.stockChange += remainingFromChange
-        remainingStock -= remainingFromChange
       }
     }
 
-    if (remainingStock > 0) {
-      quantityBySource.unknown += remainingStock
+    // Any stock without matching deliveries/changes has unknown cost
+    const accountedStock = quantityBySource.delivery + quantityBySource.stockChange
+    if (storeQty > accountedStock) {
+      quantityBySource.unknown += storeQty - accountedStock
     }
 
     const totalValue = layers.reduce((sum, l) => sum + l.layerValue, 0)
@@ -525,8 +632,8 @@ export class FifoCalculator {
     const totalItems = products.reduce((sum, p) => sum + p.totalStock, 0)
 
     // Calculate age distribution
-    const valueByAgeGroup: ValueByAgeGroup = { fresh: 0, aging: 0, old: 0, veryOld: 0 }
-    const itemsByAgeGroup: ValueByAgeGroup = { fresh: 0, aging: 0, old: 0, veryOld: 0 }
+    const valueByAgeGroup: ValueByAgeGroup = { fresh: 0, aging: 0, old: 0 }
+    const itemsByAgeGroup: ValueByAgeGroup = { fresh: 0, aging: 0, old: 0 }
 
     // Calculate source distribution
     const itemsBySource: ItemsBySource = { delivery: 0, stockChange: 0, unknown: 0 }
@@ -566,7 +673,6 @@ export class FifoCalculator {
     valueByAgeGroup.fresh = Math.round(valueByAgeGroup.fresh)
     valueByAgeGroup.aging = Math.round(valueByAgeGroup.aging)
     valueByAgeGroup.old = Math.round(valueByAgeGroup.old)
-    valueByAgeGroup.veryOld = Math.round(valueByAgeGroup.veryOld)
 
     valueBySource.delivery = Math.round(valueBySource.delivery)
     valueBySource.stockChange = Math.round(valueBySource.stockChange)

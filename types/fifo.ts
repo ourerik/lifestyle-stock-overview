@@ -91,10 +91,9 @@ export interface FifoProductValuation {
 
 // Age group classification for inventory
 export interface ValueByAgeGroup {
-  fresh: number      // 0-90 days
-  aging: number      // 91-180 days
-  old: number        // 181-365 days
-  veryOld: number    // >365 days
+  fresh: number      // < 6 months (< 183 days)
+  aging: number      // 6-18 months (183-547 days)
+  old: number        // > 18 months (> 547 days)
 }
 
 // Distribution of items by valuation source
@@ -129,28 +128,27 @@ export interface FifoValuationData {
 
 // Age classification thresholds (in days)
 export const AGE_THRESHOLDS = {
-  FRESH: 90,
-  AGING: 180,
-  OLD: 365,
+  FRESH: 183,        // < 6 months (~6 * 30.4)
+  AGING: 547,        // 6-18 months (~18 * 30.4)
 } as const
 
 // Helper to get age classification
 export function getAgeClassification(ageInDays: number): keyof ValueByAgeGroup {
-  if (ageInDays <= AGE_THRESHOLDS.FRESH) return 'fresh'
+  if (ageInDays < AGE_THRESHOLDS.FRESH) return 'fresh'
   if (ageInDays <= AGE_THRESHOLDS.AGING) return 'aging'
-  if (ageInDays <= AGE_THRESHOLDS.OLD) return 'old'
-  return 'veryOld'
+  return 'old'
 }
 
-// Helper to get Tailwind color class for age
+// Helper to get Tailwind color class for age (for UI display)
+// Green: < 6 months, Gray/default: 6-18 months, Red: > 18 months
 export function getAgeColorClass(ageInDays: number): string {
-  const classification = getAgeClassification(ageInDays)
-  switch (classification) {
-    case 'fresh': return 'text-green-600'
-    case 'aging': return 'text-yellow-600'
-    case 'old': return 'text-orange-600'
-    case 'veryOld': return 'text-red-600'
+  if (ageInDays < AGE_THRESHOLDS.FRESH) {
+    return 'text-green-600 dark:text-green-500'
   }
+  if (ageInDays <= AGE_THRESHOLDS.AGING) {
+    return ''  // Default text color (black/white depending on theme)
+  }
+  return 'text-red-600 dark:text-red-500'
 }
 
 // Helper to format age in human-readable form

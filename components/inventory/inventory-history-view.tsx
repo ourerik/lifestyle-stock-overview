@@ -27,23 +27,20 @@ interface MonthlyDataPoint {
   fresh: number
   aging: number
   old: number
-  veryOld: number
   total: number
 }
 
-// Colors matching the age classifications
+// Colors matching the age classifications (6/18 months)
 const AGE_COLORS = {
-  fresh: '#22c55e',    // green-500
-  aging: '#eab308',    // yellow-500
-  old: '#f97316',      // orange-500
-  veryOld: '#ef4444',  // red-500
+  fresh: '#22c55e',    // green-500 (< 6 mån)
+  aging: '#6b7280',    // gray-500 (6-18 mån)
+  old: '#ef4444',      // red-500 (> 18 mån)
 }
 
 const AGE_LABELS = {
-  fresh: 'Fräscht (0-90 dagar)',
-  aging: 'Åldrande (91-180 dagar)',
-  old: 'Gammalt (181-365 dagar)',
-  veryOld: 'Mycket gammalt (>365 dagar)',
+  fresh: 'Fräscht (<6 mån)',
+  aging: 'Åldrande (6-18 mån)',
+  old: 'Gammalt (>18 mån)',
 }
 
 export function InventoryHistoryView({ fifoData, isLoading }: InventoryHistoryViewProps) {
@@ -51,7 +48,7 @@ export function InventoryHistoryView({ fifoData, isLoading }: InventoryHistoryVi
   const monthlyData = useMemo(() => {
     if (!fifoData) return []
 
-    const monthMap = new Map<string, { fresh: number; aging: number; old: number; veryOld: number }>()
+    const monthMap = new Map<string, { fresh: number; aging: number; old: number }>()
 
     for (const product of fifoData.products) {
       for (const variant of product.variants) {
@@ -62,18 +59,16 @@ export function InventoryHistoryView({ fifoData, isLoading }: InventoryHistoryVi
             const date = new Date(layer.deliveryDate)
             const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
 
-            const existing = monthMap.get(monthKey) || { fresh: 0, aging: 0, old: 0, veryOld: 0 }
+            const existing = monthMap.get(monthKey) || { fresh: 0, aging: 0, old: 0 }
 
-            // Classify by age
+            // Classify by age (< 12 mån, 12-18 mån, > 18 mån)
             const value = layer.layerValue
-            if (layer.ageInDays <= AGE_THRESHOLDS.FRESH) {
+            if (layer.ageInDays < AGE_THRESHOLDS.FRESH) {
               existing.fresh += value
             } else if (layer.ageInDays <= AGE_THRESHOLDS.AGING) {
               existing.aging += value
-            } else if (layer.ageInDays <= AGE_THRESHOLDS.OLD) {
-              existing.old += value
             } else {
-              existing.veryOld += value
+              existing.old += value
             }
 
             monthMap.set(monthKey, existing)
@@ -93,7 +88,7 @@ export function InventoryHistoryView({ fifoData, isLoading }: InventoryHistoryVi
           month: monthLabel,
           sortKey,
           ...values,
-          total: values.fresh + values.aging + values.old + values.veryOld,
+          total: values.fresh + values.aging + values.old,
         }
       })
       .sort((a, b) => a.sortKey.localeCompare(b.sortKey))
@@ -107,8 +102,8 @@ export function InventoryHistoryView({ fifoData, isLoading }: InventoryHistoryVi
       return {
         averageAge: 0,
         totalValue: 0,
-        valueByAgeGroup: { fresh: 0, aging: 0, old: 0, veryOld: 0 } as ValueByAgeGroup,
-        percentages: { fresh: 0, aging: 0, old: 0, veryOld: 0 },
+        valueByAgeGroup: { fresh: 0, aging: 0, old: 0 } as ValueByAgeGroup,
+        percentages: { fresh: 0, aging: 0, old: 0 },
         oldestMonth: null as string | null,
       }
     }
@@ -120,7 +115,6 @@ export function InventoryHistoryView({ fifoData, isLoading }: InventoryHistoryVi
       fresh: (valueByAgeGroup.fresh / total) * 100,
       aging: (valueByAgeGroup.aging / total) * 100,
       old: (valueByAgeGroup.old / total) * 100,
-      veryOld: (valueByAgeGroup.veryOld / total) * 100,
     }
 
     // Find oldest month with inventory
@@ -225,10 +219,10 @@ export function InventoryHistoryView({ fifoData, isLoading }: InventoryHistoryVi
               <div>
                 <p className="text-sm text-muted-foreground">Gammalt lager</p>
                 <p className="text-2xl font-bold text-red-600">
-                  {(summaryStats.percentages.old + summaryStats.percentages.veryOld).toFixed(0)}%
+                  {summaryStats.percentages.old.toFixed(0)}%
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {formatCurrency(summaryStats.valueByAgeGroup.old + summaryStats.valueByAgeGroup.veryOld)}
+                  {formatCurrency(summaryStats.valueByAgeGroup.old)}
                 </p>
               </div>
               <TrendingDown className="h-8 w-8 text-red-500" />
@@ -270,14 +264,6 @@ export function InventoryHistoryView({ fifoData, isLoading }: InventoryHistoryVi
                 />
                 <Area
                   type="monotone"
-                  dataKey="veryOld"
-                  stackId="1"
-                  stroke={AGE_COLORS.veryOld}
-                  fill={AGE_COLORS.veryOld}
-                  fillOpacity={0.8}
-                />
-                <Area
-                  type="monotone"
                   dataKey="old"
                   stackId="1"
                   stroke={AGE_COLORS.old}
@@ -313,7 +299,7 @@ export function InventoryHistoryView({ fifoData, isLoading }: InventoryHistoryVi
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {(['fresh', 'aging', 'old', 'veryOld'] as const).map((ageGroup) => {
+            {(['fresh', 'aging', 'old'] as const).map((ageGroup) => {
               const value = summaryStats.valueByAgeGroup[ageGroup]
               const percentage = summaryStats.percentages[ageGroup]
 
