@@ -171,15 +171,6 @@ export function PerformanceView({
     )
   }, [data?.products, searchQuery])
 
-  if (error) {
-    return (
-      <Alert variant="destructive">
-        <AlertCircle className="h-4 w-4" />
-        <AlertDescription>{error}</AlertDescription>
-      </Alert>
-    )
-  }
-
   const summary = data?.summary
   const previousSummary = previousData?.summary
 
@@ -195,6 +186,15 @@ export function PerformanceView({
       avgDiscount: calculateChange(summary.totalAvgDiscountPercent, previousSummary.totalAvgDiscountPercent),
     }
   }, [summary, previousSummary])
+
+  if (error) {
+    return (
+      <Alert variant="destructive">
+        <AlertCircle className="h-4 w-4" />
+        <AlertDescription>{error}</AlertDescription>
+      </Alert>
+    )
+  }
 
   // Format date range for display
   const formatDateRange = () => {
