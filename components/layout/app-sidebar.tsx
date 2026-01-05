@@ -1,6 +1,6 @@
 'use client';
 
-import { LayoutDashboard, Package, Truck, ChevronDown, LogOut, User } from 'lucide-react';
+import { LayoutDashboard, Package, Truck, BarChart3, Settings, ChevronDown, LogOut, User } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useUser } from '@auth0/nextjs-auth0/client';
 import { useRoles } from '@/hooks/use-roles';
@@ -153,6 +153,30 @@ export function AppSidebar() {
                       <a href={`/${currentCompany}/deliveries`}>
                         <Truck className="h-4 w-4" />
                         <span>Inleveranser</span>
+                      </a>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={pathname.includes('/performance')}
+                      tooltip="Prestation"
+                    >
+                      <a href={`/${currentCompany}/performance`}>
+                        <BarChart3 className="h-4 w-4" />
+                        <span>Prestation</span>
+                      </a>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={pathname.includes('/settings')}
+                      tooltip="Inställningar"
+                    >
+                      <a href={`/${currentCompany}/settings/ad-costs`}>
+                        <Settings className="h-4 w-4" />
+                        <span>Inställningar</span>
                       </a>
                     </SidebarMenuButton>
                   </SidebarMenuItem>

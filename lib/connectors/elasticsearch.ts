@@ -78,6 +78,16 @@ const COMPANY_STOCK_CHANGES_INDEX: Record<CompanyId, string> = {
   'sneaky-steve': 'sneaky_stock_changes_v1',
 }
 
+const COMPANY_SALES_ECOM_INDEX: Record<CompanyId, string> = {
+  'varg': 'varg_sales_ecom',
+  'sneaky-steve': 'sneaky_sales_ecom',
+}
+
+const COMPANY_AD_COSTS_INDEX: Record<CompanyId, string> = {
+  'varg': 'varg_ad_costs',
+  'sneaky-steve': 'sneaky_ad_costs',
+}
+
 // Stock change document stored in Elasticsearch
 export interface ESStockChange {
   id: string  // {productSizeId}_{stockChangeId}
@@ -672,6 +682,285 @@ export class ElasticsearchConnector {
     }
 
     return allChanges
+  }
+
+  // ==================== Product Performance (Sales) ====================
+
+  /**
+   * Fetch aggregated product performance data from ecom sales index
+   */
+  async fetchProductPerformance(
+    company: CompanyId,
+    startDate: string,
+    endDate: string
+  ): Promise<{
+    products: Array<{
+      productNumber: string
+      productName: string
+      salesQuantity: number
+      returnQuantity: number
+      turnover: number
+      turnoverBeforeReturns: number
+      costs: number
+      avgDiscountPercent: number
+      orderCount: number
+      customerAges: number[]
+    }>
+    totalOrderCount: number
+  }> {
+    const index = COMPANY_SALES_ECOM_INDEX[company]
+
+    console.log(`[ES Performance] Fetching from ${index}, date range: ${startDate} to ${endDate}`)
+
+    const result = await this.request<{
+      aggregations?: {
+        total_orders: { value: number }
+        by_product: {
+          buckets: Array<{
+            key: string
+            doc_count: number
+            product_name: { buckets: Array<{ key: string }> }
+            total_quantity: { value: number }
+            total_returned: { value: number }
+            total_turnover: { value: number }
+            total_turnover_before_returns: { value: number }
+            total_costs: { value: number }
+            avg_discount: { value: number }
+            unique_orders: { value: number }
+            customer_ages: { values: { '50.0': number } }
+          }>
+        }
+      }
+    }>(`/${index}/_search`, {
+      size: 0,
+      query: {
+        bool: {
+          filter: [
+            {
+              range: {
+                orderDate: {
+                  gte: startDate,
+                  lte: endDate,
+                },
+              },
+            },
+          ],
+        },
+      },
+      aggs: {
+        total_orders: {
+          cardinality: {
+            field: 'orderId.keyword',
+          },
+        },
+        by_product: {
+          terms: {
+            field: 'productNumber.keyword',
+            size: 10000,
+          },
+          aggs: {
+            product_name: {
+              terms: {
+                field: 'productName.keyword',
+                size: 1,
+              },
+            },
+            total_quantity: {
+              sum: { field: 'quantity' },
+            },
+            total_returned: {
+              sum: { field: 'returnedQuantity' },
+            },
+            total_turnover: {
+              sum: { field: 'totalPriceReturnsAdjusted' },
+            },
+            total_turnover_before_returns: {
+              sum: { field: 'totalPrice' },
+            },
+            total_costs: {
+              sum: { field: 'orderLineTotalCost' },
+            },
+            avg_discount: {
+              avg: { field: 'discountPercent' },
+            },
+            unique_orders: {
+              cardinality: {
+                field: 'orderId.keyword',
+              },
+            },
+            // Get customer ages for median calculation (filter out 0 values)
+            customer_ages: {
+              percentiles: {
+                field: 'customerAge',
+                percents: [50],
+              },
+            },
+          },
+        },
+      },
+    })
+
+    const buckets = result.aggregations?.by_product.buckets || []
+    const totalOrderCount = result.aggregations?.total_orders.value || 0
+
+    console.log(`[ES Performance] Found ${buckets.length} products, ${totalOrderCount} total orders`)
+
+    const products = buckets.map(bucket => ({
+      productNumber: bucket.key,
+      productName: bucket.product_name.buckets[0]?.key || bucket.key,
+      salesQuantity: bucket.total_quantity.value || 0,
+      returnQuantity: bucket.total_returned.value || 0,
+      turnover: bucket.total_turnover.value || 0,
+      turnoverBeforeReturns: bucket.total_turnover_before_returns.value || 0,
+      costs: bucket.total_costs.value || 0,
+      avgDiscountPercent: bucket.avg_discount.value || 0,
+      orderCount: bucket.unique_orders.value || 0,
+      customerAges: [], // We'll use percentile instead
+      medianAge: bucket.customer_ages.values['50.0'] || null,
+    }))
+
+    return { products, totalOrderCount }
+  }
+
+  /**
+   * Get total order count for a period (used for ad cost calculation)
+   */
+  async getOrderCountForPeriod(
+    company: CompanyId,
+    startDate: string,
+    endDate: string
+  ): Promise<number> {
+    const index = COMPANY_SALES_ECOM_INDEX[company]
+
+    const result = await this.request<{
+      aggregations?: {
+        unique_orders: { value: number }
+      }
+    }>(`/${index}/_search`, {
+      size: 0,
+      query: {
+        bool: {
+          filter: [
+            {
+              range: {
+                orderDate: {
+                  gte: startDate,
+                  lte: endDate,
+                },
+              },
+            },
+          ],
+        },
+      },
+      aggs: {
+        unique_orders: {
+          cardinality: {
+            field: 'orderId.keyword',
+          },
+        },
+      },
+    })
+
+    return result.aggregations?.unique_orders.value || 0
+  }
+
+  // ==================== Ad Costs ====================
+
+  /**
+   * Fetch all ad costs for a company
+   */
+  async fetchAdCosts(company: CompanyId): Promise<Array<{
+    id: string
+    year: number
+    month: number
+    metaCost: number
+    googleCost: number
+    totalCost: number
+    createdAt: string
+    updatedAt: string
+  }>> {
+    const index = COMPANY_AD_COSTS_INDEX[company]
+
+    try {
+      const result = await this.request<{
+        hits: {
+          hits: Array<{
+            _source: {
+              id: string
+              year: number
+              month: number
+              metaCost: number
+              googleCost: number
+              totalCost: number
+              createdAt: string
+              updatedAt: string
+            }
+          }>
+        }
+      }>(`/${index}/_search`, {
+        size: 1000,
+        sort: [{ year: 'desc' }, { month: 'desc' }],
+      })
+
+      return result.hits.hits.map(h => h._source)
+    } catch {
+      // Index might not exist yet
+      console.log(`[ES] Ad costs index not found for ${company}`)
+      return []
+    }
+  }
+
+  /**
+   * Save or update an ad cost entry
+   */
+  async saveAdCost(
+    company: CompanyId,
+    adCost: {
+      year: number
+      month: number
+      metaCost: number
+      googleCost: number
+    }
+  ): Promise<void> {
+    const index = COMPANY_AD_COSTS_INDEX[company]
+    const id = `${adCost.year}-${String(adCost.month).padStart(2, '0')}`
+    const now = new Date().toISOString()
+
+    const doc = {
+      id,
+      year: adCost.year,
+      month: adCost.month,
+      metaCost: adCost.metaCost,
+      googleCost: adCost.googleCost,
+      totalCost: adCost.metaCost + adCost.googleCost,
+      createdAt: now,
+      updatedAt: now,
+    }
+
+    await this.request(`/${index}/_doc/${id}`, doc)
+    console.log(`[ES] Saved ad cost for ${company}: ${id}`)
+  }
+
+  /**
+   * Delete an ad cost entry
+   */
+  async deleteAdCost(company: CompanyId, year: number, month: number): Promise<void> {
+    const index = COMPANY_AD_COSTS_INDEX[company]
+    const id = `${year}-${String(month).padStart(2, '0')}`
+
+    const response = await fetch(`${this.baseUrl}/${index}/_doc/${id}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `ApiKey ${this.apiKey}`,
+      },
+    })
+
+    if (!response.ok && response.status !== 404) {
+      const errorText = await response.text()
+      throw new Error(`Failed to delete ad cost: ${response.status} - ${errorText}`)
+    }
+
+    console.log(`[ES] Deleted ad cost for ${company}: ${id}`)
   }
 
   // ==================== Exchange Rates ====================
