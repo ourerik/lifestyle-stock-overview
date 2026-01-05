@@ -25,16 +25,26 @@ export class FifoCalculator {
    * Priority: 1) Purchase deliveries (most trusted), 2) Stock changes (less trusted), 3) Unknown
    * @param companyId - Company to calculate for
    * @param zettleInventory - Optional map of EAN -> store quantity (for companies with Zettle)
+   * @param specificDate - Optional date to use for stock snapshot (YYYY-MM-DD format)
    */
   async calculateValuation(
     companyId: Exclude<CompanyId, 'all'>,
-    zettleInventory?: Map<string, number>
+    zettleInventory?: Map<string, number>,
+    specificDate?: string
   ): Promise<FifoValuationData> {
     const esConnector = new ElasticsearchConnector(this.env)
 
-    // Fetch current stock
-    const { items: stockItems } = await esConnector.fetchStock(companyId)
-    console.log(`[FIFO] Loaded ${stockItems.length} stock items`)
+    // Fetch stock - either for specific date or latest
+    let stockItems: StockItem[]
+    if (specificDate) {
+      const result = await esConnector.fetchStockForSpecificDate(companyId, specificDate)
+      stockItems = result.items
+      console.log(`[FIFO] Loaded ${stockItems.length} stock items for date ${specificDate}`)
+    } else {
+      const result = await esConnector.fetchStock(companyId)
+      stockItems = result.items
+      console.log(`[FIFO] Loaded ${stockItems.length} stock items`)
+    }
 
     // Fetch all purchase deliveries (sorted oldest first) - PRIMARY SOURCE
     const deliveries = await esConnector.fetchPurchaseDeliveries(companyId)

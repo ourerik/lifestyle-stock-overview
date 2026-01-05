@@ -164,6 +164,17 @@ export class ElasticsearchConnector {
     return { items, lastUpdated: latestInfo.date }
   }
 
+  /**
+   * Fetch stock for a specific date (e.g., for historical comparison)
+   * @param company - Company ID
+   * @param date - Date in YYYY-MM-DD format
+   */
+  async fetchStockForSpecificDate(company: CompanyId, date: string): Promise<{ items: StockItem[], date: string }> {
+    const indexPrefix = COMPANY_INDEX_PREFIX[company]
+    const items = await this.fetchStockForDate(indexPrefix, date)
+    return { items, date }
+  }
+
   private async findLatestStockDate(indexPrefix: string): Promise<{ index: string, date: string } | null> {
     // Search across all stock indices, get the max date
     const result = await this.request<{
