@@ -20,7 +20,7 @@ export type PerformancePeriod = '1y' | '9m' | '6m' | '3m' | '1m'
 
 const VALID_PERIODS: PerformancePeriod[] = ['1y', '9m', '6m', '3m', '1m']
 const PERIOD_STORAGE_KEY = 'performance-period'
-const DEFAULT_PERIOD: PerformancePeriod = '1y'
+const DEFAULT_PERIOD: PerformancePeriod = '3m'
 
 function isValidPeriod(value: string | null): value is PerformancePeriod {
   return value !== null && VALID_PERIODS.includes(value as PerformancePeriod)

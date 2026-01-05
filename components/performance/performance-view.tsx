@@ -17,7 +17,7 @@ import type { PerformanceData, ProductPerformance } from '@/types/performance'
 import type { PerformancePeriod } from './performance-page-view'
 
 const PERIOD_LABELS: Record<PerformancePeriod, string> = {
-  '1y': 'Ett år',
+  '1y': '12 mån',
   '9m': '9 mån',
   '6m': '6 mån',
   '3m': '3 mån',
