@@ -496,6 +496,63 @@ export class ElasticsearchConnector {
   }
 
   /**
+   * Fetch all purchase deliveries for a specific product
+   * Used for purchase history display (includes all deliveries, not just remaining stock)
+   */
+  async fetchPurchaseDeliveriesByProduct(
+    company: CompanyId,
+    productNumber: string
+  ): Promise<ESPurchaseDelivery[]> {
+    const index = COMPANY_PO_DELIVERY_INDEX[company]
+    console.log(`[ES] fetchPurchaseDeliveriesByProduct: index=${index}, productNumber=${productNumber}`)
+
+    try {
+      const allDeliveries: ESPurchaseDelivery[] = []
+      let searchAfter: unknown[] | undefined
+
+      do {
+        const body: Record<string, unknown> = {
+          size: 1000,
+          query: {
+            // Use prefix match because delivery productNumber format is {productNumber}{variantNumber}
+            // e.g., stock has "1000597" but deliveries have "10005970005"
+            prefix: { 'productNumber.keyword': productNumber }
+          },
+          sort: [{ createdAt: 'desc' }, '_doc'],  // Newest first for history display
+          _source: true,
+        }
+        console.log(`[ES] Query body:`, JSON.stringify(body.query))
+
+        if (searchAfter) {
+          body.search_after = searchAfter
+        }
+
+        const result = await this.request<{
+          hits: {
+            hits: Array<{
+              _source: ESPurchaseDelivery
+              sort: unknown[]
+            }>
+          }
+        }>(`/${index}/_search`, body)
+
+        const hits = result.hits.hits
+        if (hits.length === 0) break
+
+        allDeliveries.push(...hits.map(h => h._source))
+        searchAfter = hits[hits.length - 1].sort
+
+        if (hits.length < 1000) break
+      } while (true)
+
+      return allDeliveries
+    } catch (error) {
+      console.log(`[ES] Failed to fetch deliveries for product ${productNumber}:`, error)
+      return []
+    }
+  }
+
+  /**
    * Get the max stock change ID in ES for incremental sync
    */
   async getMaxStockChangeId(company: CompanyId): Promise<number | null> {

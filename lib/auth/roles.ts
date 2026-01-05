@@ -21,7 +21,7 @@ export const OVERVIEW_ROLES: Role[] = ['Admin', 'Basic'];
 const USER_ROLES: Record<string, Role[]> = {
   'erik@ourstudio.se': ['Admin'],
   'stefan@tripointx.com': ['Admin'],
-  'mamadeleine@vargklader.com': ['Varg'],
+  'madeleine@vargklader.com': ['Varg'],
   'jacob@fdivision.com': ['Sneaky Steve'],
   'robert@ourstudio.se': ['Admin'],
   // Add more users here:

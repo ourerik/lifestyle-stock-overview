@@ -23,11 +23,15 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { Button } from '@/components/ui/button'
 import { StatusBadges } from './status-badge'
 import { StockHistoryChart } from './stock-history-chart'
+import { PurchaseHistoryDialog } from './purchase-history-dialog'
+import { History } from 'lucide-react'
 import type { AggregatedProduct } from '@/types/inventory'
 import type { CompanyId } from '@/config/companies'
 import type { FifoProductValuation } from '@/types/fifo'
+import type { ProductPurchaseHistory } from '@/types/purchase-history'
 import { formatCurrency, formatPeriod, getAgeColorClass, getSourceLabel, getSourceColorClass } from '@/types/fifo'
 
 interface ProductDetailSheetProps {
@@ -54,6 +58,13 @@ export function ProductDetailSheet({
   const [previewImage, setPreviewImage] = useState<string | null>(null)
   const [fifoData, setFifoData] = useState<FifoProductValuation | null>(null)
   const [fifoLoading, setFifoLoading] = useState(false)
+  const [purchaseHistory, setPurchaseHistory] = useState<ProductPurchaseHistory | null>(null)
+  const [purchaseHistoryLoading, setPurchaseHistoryLoading] = useState(false)
+  const [historyDialogOpen, setHistoryDialogOpen] = useState(false)
+  const [selectedVariantForHistory, setSelectedVariantForHistory] = useState<{
+    variantId: number
+    variantName: string
+  } | null>(null)
 
   // Fetch FIFO valuation data when sheet opens
   useEffect(() => {
@@ -84,6 +95,33 @@ export function ProductDetailSheet({
     }
 
     fetchFifoData()
+  }, [open, product, companyId])
+
+  // Fetch purchase history data when sheet opens
+  useEffect(() => {
+    if (!open || !product) {
+      setPurchaseHistory(null)
+      return
+    }
+
+    const fetchPurchaseHistory = async () => {
+      setPurchaseHistoryLoading(true)
+      try {
+        const res = await fetch(
+          `/api/inventory/purchase-history?company=${companyId}&productNumber=${encodeURIComponent(product.productNumber)}`
+        )
+        if (res.ok) {
+          const json = await res.json()
+          setPurchaseHistory(json.data || null)
+        }
+      } catch (error) {
+        console.error('Failed to fetch purchase history:', error)
+      } finally {
+        setPurchaseHistoryLoading(false)
+      }
+    }
+
+    fetchPurchaseHistory()
   }, [open, product, companyId])
 
   // Get FIFO data for a specific size (EAN)
@@ -270,6 +308,26 @@ export function ProductDetailSheet({
               )}
               <div className="text-xs text-muted-foreground">I lager sedan</div>
             </div>
+            <div className="text-center p-3 bg-muted/50 rounded-lg">
+              {purchaseHistoryLoading ? (
+                <div className="text-lg text-muted-foreground">...</div>
+              ) : purchaseHistory ? (
+                <div className="text-lg font-bold">{purchaseHistory.totalQuantityPurchased} st</div>
+              ) : (
+                <div className="text-lg text-muted-foreground">-</div>
+              )}
+              <div className="text-xs text-muted-foreground">Totalt inköpt</div>
+            </div>
+            <div className="text-center p-3 bg-muted/50 rounded-lg">
+              {purchaseHistoryLoading ? (
+                <div className="text-lg text-muted-foreground">...</div>
+              ) : purchaseHistory?.firstPurchaseDate ? (
+                <div className="text-lg font-bold">{formatPeriod(purchaseHistory.firstPurchaseDate)}</div>
+              ) : (
+                <div className="text-lg text-muted-foreground">-</div>
+              )}
+              <div className="text-xs text-muted-foreground">Första inköpet</div>
+            </div>
           </div>
 
           {/* Tabs */}
@@ -299,7 +357,24 @@ export function ProductDetailSheet({
                     </button>
                   ) : null}
                   <div className="flex-1 min-w-0">
-                    <div className="font-medium truncate">{variant.variantName}</div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium truncate">{variant.variantName}</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-xs"
+                        onClick={() => {
+                          setSelectedVariantForHistory({
+                            variantId: variant.variantId,
+                            variantName: variant.variantName,
+                          })
+                          setHistoryDialogOpen(true)
+                        }}
+                      >
+                        <History className="h-3 w-3 mr-1" />
+                        Historik
+                      </Button>
+                    </div>
                     <div className="text-xs text-muted-foreground">{variant.variantNumber}</div>
                   </div>
                   <div className="text-right">
@@ -485,6 +560,18 @@ export function ProductDetailSheet({
             </TabsContent>
           </Tabs>
         </div>
+
+        {/* Purchase History Dialog */}
+        {selectedVariantForHistory && (
+          <PurchaseHistoryDialog
+            open={historyDialogOpen}
+            onOpenChange={setHistoryDialogOpen}
+            variantId={selectedVariantForHistory.variantId}
+            variantName={selectedVariantForHistory.variantName}
+            productNumber={product.productNumber}
+            companyId={companyId}
+          />
+        )}
 
         {/* Image lightbox */}
         {previewImage && (
