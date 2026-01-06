@@ -1,6 +1,6 @@
 'use client'
 
-import { TrendingUp, TrendingDown, type LucideIcon } from 'lucide-react'
+import { TrendingUp, TrendingDown } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { formatCurrency } from '@/lib/utils/currency'
@@ -12,11 +12,9 @@ interface KpiCardProps {
   subtitle?: string
   change?: number | null // % change vs previous period
   suffix?: string // e.g. "%" or "st"
-  icon?: LucideIcon
   loading?: boolean
   invertColors?: boolean // for metrics where lower is better
   size?: 'sm' | 'md' | 'lg'
-  variant?: 'default' | 'warning' | 'info'
   format?: 'number' | 'currency' | 'none'
   comparisonLabel?: string // e.g. "vs förra året"
   className?: string
@@ -27,8 +25,6 @@ const sizeStyles = {
     title: 'text-[12px] md:text-xs',
     value: 'text-sm md:text-base',
     change: 'text-[12px] md:text-xs',
-    icon: 'h-6 w-6',
-    iconWrapper: 'h-8 w-8',
     suffix: 'text-xs md:text-sm',
     skeleton: { value: 'h-5 w-16', change: 'h-3 w-12' },
   },
@@ -36,8 +32,6 @@ const sizeStyles = {
     title: 'text-[10px] md:text-sm',
     value: 'text-base md:text-xl',
     change: 'text-[10px] md:text-xs',
-    icon: 'h-7 w-7',
-    iconWrapper: 'h-10 w-10',
     suffix: 'text-sm md:text-base',
     skeleton: { value: 'h-7 w-20', change: 'h-4 w-14' },
   },
@@ -45,25 +39,8 @@ const sizeStyles = {
     title: 'text-xs md:text-sm',
     value: 'text-lg md:text-2xl',
     change: 'text-[10px] md:text-sm',
-    icon: 'h-8 w-8',
-    iconWrapper: 'h-12 w-12',
     suffix: 'text-base md:text-lg',
     skeleton: { value: 'h-8 w-24', change: 'h-4 w-16' },
-  },
-}
-
-const variantStyles = {
-  default: {
-    iconBg: 'bg-muted',
-    iconColor: 'text-muted-foreground',
-  },
-  warning: {
-    iconBg: 'bg-amber-100 dark:bg-amber-950',
-    iconColor: 'text-amber-500',
-  },
-  info: {
-    iconBg: 'bg-blue-100 dark:bg-blue-950',
-    iconColor: 'text-blue-500',
   },
 }
 
@@ -83,17 +60,14 @@ export function KpiCard({
   subtitle,
   change,
   suffix,
-  icon: Icon,
   loading = false,
   invertColors = false,
   size = 'md',
-  variant = 'default',
   format = 'none',
   comparisonLabel,
   className,
 }: KpiCardProps) {
   const styles = sizeStyles[size]
-  const variantStyle = variantStyles[variant]
 
   // Determine change colors
   const isPositive = change !== null && change !== undefined && change > 0
@@ -119,7 +93,7 @@ export function KpiCard({
           className
         )}
       >
-        <CardContent className="pt-3 pr-3 pb-2 pl-2 md:pt-6 md:px-6 md:pb-6 h-full flex flex-col justify-end">
+        <CardContent className="pt-3 pr-3 pb-2 pl-2 md:pt-4 md:pr-4 md:pb-3 md:pl-3 h-full flex flex-col justify-end">
           <div className="flex items-end justify-between">
             <div className="space-y-1">
               <p className={cn('font-medium text-muted-foreground', styles.title)}>
@@ -128,9 +102,6 @@ export function KpiCard({
               <Skeleton className={styles.skeleton.value} />
               <Skeleton className={styles.skeleton.change} />
             </div>
-            {Icon && (
-              <Skeleton className={cn('rounded-full', styles.iconWrapper)} />
-            )}
           </div>
         </CardContent>
       </Card>
@@ -146,7 +117,7 @@ export function KpiCard({
         className
       )}
     >
-      <CardContent className="pt-6 pr-3 pb-2.5 pl-2.5 md:pt-6 md:px-6 md:pb-6">
+      <CardContent className="pt-6 pr-3 pb-2.5 pl-2.5 md:pt-4 md:pr-4 md:pb-3 md:pl-3 h-full flex flex-col justify-end">
         <div className="flex items-end justify-between">
           <div className="space-y-0 md:space-y-0.5 leading-tight">
             <p className={cn('font-medium text-muted-foreground', styles.title)}>
@@ -189,17 +160,6 @@ export function KpiCard({
               </p>
             )}
           </div>
-          {Icon && (
-            <div
-              className={cn(
-                'rounded-full flex items-center justify-center',
-                styles.iconWrapper,
-                variantStyle.iconBg
-              )}
-            >
-              <Icon className={cn(styles.icon, variantStyle.iconColor)} />
-            </div>
-          )}
         </div>
       </CardContent>
     </Card>

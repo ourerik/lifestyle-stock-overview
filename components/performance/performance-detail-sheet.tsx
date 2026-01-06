@@ -18,6 +18,8 @@ import {
 import { Button } from '@/components/ui/button'
 import { MobileFullBleed } from '@/components/ui/mobile-full-bleed'
 import { KpiCard } from '@/components/ui/kpi-card'
+import { TableToolbar } from '@/components/ui/table-toolbar'
+import { useColumnVisibility, type ColumnConfig } from '@/hooks/use-column-visibility'
 import { VariantPeriodTable } from './variant-period-table'
 import { formatCurrency } from '@/lib/utils/currency'
 import { formatDateRangeShort } from '@/lib/utils/date'
@@ -64,6 +66,36 @@ export function PerformanceDetailSheet({
   const [previousVariants, setPreviousVariants] = useState<VariantPerformance[] | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [variantSearch, setVariantSearch] = useState('')
+
+  // Column configs for variant table
+  const variantColumnConfigs: ColumnConfig[] = useMemo(() => [
+    { id: 'variant', label: 'Variant', defaultVisible: true },
+    { id: 'sales', label: 'Sålt', defaultVisible: true },
+    { id: 'turnover', label: 'Omsättning', defaultVisible: true },
+    { id: 'tb', label: 'TB', defaultVisible: true },
+    { id: 'tbPercent', label: 'TB%', defaultVisible: true },
+    { id: 'returnRate', label: 'Retur%', defaultVisible: true },
+    { id: 'discount', label: 'Rabatt', defaultVisible: false },
+    { id: 'age', label: 'Med. ålder', defaultVisible: false },
+  ], [])
+
+  const { visibleColumns, toggleColumn, resetToDefaults } = useColumnVisibility(
+    'performance-variant-detail',
+    variantColumnConfigs
+  )
+
+  // Filter variants based on search
+  const filteredVariants = useMemo(() => {
+    if (!detailData?.variants) return []
+    if (!variantSearch) return detailData.variants
+
+    const query = variantSearch.toLowerCase()
+    return detailData.variants.filter(v =>
+      v.variantName.toLowerCase().includes(query) ||
+      v.variantNumber.toLowerCase().includes(query)
+    )
+  }, [detailData?.variants, variantSearch])
 
   // Fetch detail data when sheet opens
   useEffect(() => {
@@ -160,17 +192,31 @@ export function PerformanceDetailSheet({
         {/* Variant data */}
         {!isLoading && detailData && (
           <div className="space-y-4">
-            <h3 className="text-sm font-medium">Varianter ({detailData.variants.length})</h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-medium">Varianter ({filteredVariants.length})</h3>
+            </div>
 
-            {detailData.variants.length === 0 ? (
+            {/* Variant search and column selector */}
+            <TableToolbar
+              searchQuery={variantSearch}
+              onSearchChange={setVariantSearch}
+              searchPlaceholder="Sök variant..."
+              columnConfigs={variantColumnConfigs}
+              visibleColumns={visibleColumns}
+              onToggleColumn={toggleColumn}
+              onResetColumns={resetToDefaults}
+            />
+
+            {filteredVariants.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
-                Ingen variantdata tillgänglig
+                {variantSearch ? 'Inga varianter matchade sökningen' : 'Ingen variantdata tillgänglig'}
               </div>
             ) : (
               <VariantsTable
-                variants={detailData.variants}
+                variants={filteredVariants}
                 previousVariants={previousVariants}
                 periodDefinitions={detailData.periodDefinitions}
+                visibleColumns={visibleColumns}
               />
             )}
           </div>
@@ -311,12 +357,20 @@ function VariantsTable({
   variants,
   previousVariants,
   periodDefinitions,
+  visibleColumns,
 }: {
   variants: VariantPerformance[]
   previousVariants: VariantPerformance[] | null
   periodDefinitions: RollingPeriod[]
+  visibleColumns?: string[]
 }) {
   const [expandedVariants, setExpandedVariants] = useState<Set<string>>(new Set())
+
+  // Helper to check if a column is visible
+  const isColumnVisible = (columnId: string) => {
+    if (!visibleColumns) return true
+    return visibleColumns.includes(columnId)
+  }
 
   // Create a map of previous variants for easy lookup
   const previousVariantsMap = useMemo(() => {
@@ -345,14 +399,14 @@ function VariantsTable({
         <TableHeader>
           <TableRow>
             <TableHead className="w-8"></TableHead>
-            <TableHead>Variant</TableHead>
-            <TableHead className="text-right">Sålt</TableHead>
-            <TableHead className="text-right">Omsättning</TableHead>
-            <TableHead className="text-right">TB</TableHead>
-            <TableHead className="text-right">TB%</TableHead>
-            <TableHead className="text-right">Retur%</TableHead>
-            <TableHead className="text-right">Rabatt</TableHead>
-            <TableHead className="text-right">Med. ålder</TableHead>
+            {isColumnVisible('variant') && <TableHead>Variant</TableHead>}
+            {isColumnVisible('sales') && <TableHead className="text-right">Sålt</TableHead>}
+            {isColumnVisible('turnover') && <TableHead className="text-right">Omsättning</TableHead>}
+            {isColumnVisible('tb') && <TableHead className="text-right">TB</TableHead>}
+            {isColumnVisible('tbPercent') && <TableHead className="text-right">TB%</TableHead>}
+            {isColumnVisible('returnRate') && <TableHead className="text-right">Retur%</TableHead>}
+            {isColumnVisible('discount') && <TableHead className="text-right">Rabatt</TableHead>}
+            {isColumnVisible('age') && <TableHead className="text-right">Med. ålder</TableHead>}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -384,42 +438,58 @@ function VariantsTable({
                       <ChevronRight className="h-4 w-4 text-muted-foreground" />
                     )}
                   </TableCell>
-                  <TableCell>
-                    <div className="font-medium text-sm">{variant.variantName}</div>
-                    <div className="text-xs text-muted-foreground">{variant.variantNumber}</div>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="font-medium">{variant.totalSalesQuantity}</div>
-                    <ChangeIndicator change={changes?.sales ?? null} />
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="font-medium">{formatCurrency(variant.totalTurnover)}</div>
-                    <ChangeIndicator change={changes?.turnover ?? null} />
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="font-medium">{formatCurrency(variant.totalTb)}</div>
-                    <ChangeIndicator change={changes?.tb ?? null} />
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div>{formatTbPercent(variant.totalTbPercent)}</div>
-                    <ChangeIndicator change={changes?.tbPercent ?? null} />
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div>{formatReturnRate(variant.totalReturnRate)}</div>
-                    <ChangeIndicator change={changes?.returnRate ?? null} invertColors />
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    <div>{variant.totalAvgDiscountPercent > 0 ? `${variant.totalAvgDiscountPercent}%` : '-'}</div>
-                    <ChangeIndicator change={changes?.discount ?? null} invertColors />
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    <div>{variant.medianCustomerAge !== null ? `${variant.medianCustomerAge} år` : '-'}</div>
-                    <ChangeIndicator change={changes?.age ?? null} />
-                  </TableCell>
+                  {isColumnVisible('variant') && (
+                    <TableCell>
+                      <div className="font-medium text-sm">{variant.variantName}</div>
+                      <div className="text-xs text-muted-foreground">{variant.variantNumber}</div>
+                    </TableCell>
+                  )}
+                  {isColumnVisible('sales') && (
+                    <TableCell className="text-right">
+                      <div className="font-medium">{variant.totalSalesQuantity}</div>
+                      <ChangeIndicator change={changes?.sales ?? null} />
+                    </TableCell>
+                  )}
+                  {isColumnVisible('turnover') && (
+                    <TableCell className="text-right">
+                      <div className="font-medium">{formatCurrency(variant.totalTurnover)}</div>
+                      <ChangeIndicator change={changes?.turnover ?? null} />
+                    </TableCell>
+                  )}
+                  {isColumnVisible('tb') && (
+                    <TableCell className="text-right">
+                      <div className="font-medium">{formatCurrency(variant.totalTb)}</div>
+                      <ChangeIndicator change={changes?.tb ?? null} />
+                    </TableCell>
+                  )}
+                  {isColumnVisible('tbPercent') && (
+                    <TableCell className="text-right">
+                      <div>{formatTbPercent(variant.totalTbPercent)}</div>
+                      <ChangeIndicator change={changes?.tbPercent ?? null} />
+                    </TableCell>
+                  )}
+                  {isColumnVisible('returnRate') && (
+                    <TableCell className="text-right">
+                      <div>{formatReturnRate(variant.totalReturnRate)}</div>
+                      <ChangeIndicator change={changes?.returnRate ?? null} invertColors />
+                    </TableCell>
+                  )}
+                  {isColumnVisible('discount') && (
+                    <TableCell className="text-right text-muted-foreground">
+                      <div>{variant.totalAvgDiscountPercent > 0 ? `${variant.totalAvgDiscountPercent}%` : '-'}</div>
+                      <ChangeIndicator change={changes?.discount ?? null} invertColors />
+                    </TableCell>
+                  )}
+                  {isColumnVisible('age') && (
+                    <TableCell className="text-right text-muted-foreground">
+                      <div>{variant.medianCustomerAge !== null ? `${variant.medianCustomerAge} år` : '-'}</div>
+                      <ChangeIndicator change={changes?.age ?? null} />
+                    </TableCell>
+                  )}
                 </TableRow>
                 {isExpanded && (
                   <tr>
-                    <td colSpan={9} className="p-0 border-b">
+                    <td colSpan={100} className="p-0 border-b">
                       <VariantPeriodTable
                         variant={variant}
                         periodDefinitions={periodDefinitions}

@@ -28,7 +28,8 @@ export interface VariantPurchaseHistory {
 
 // Purchase history for a specific size
 export interface SizePurchaseHistory {
-  sizeNumber: string
+  size: string           // Human-readable size (e.g., "40", "M")
+  sizeNumber: string     // Internal size ID (e.g., "AJ")
   currentStock: number
   totalQuantityPurchased: number
   firstPurchaseDate: string | null

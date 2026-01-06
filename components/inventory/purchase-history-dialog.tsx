@@ -110,36 +110,40 @@ export function PurchaseHistoryDialog({
         {!loading && !error && data && (
           <div className="space-y-6">
             {data.sizes.map((size) => (
-              <div key={size.sizeNumber} className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-medium">
-                    Storlek {size.sizeNumber || '-'}
+              <div key={size.sizeNumber} className="rounded-lg border overflow-hidden">
+                {/* Size header */}
+                <div className="flex items-center justify-between bg-muted/50 px-4 py-2.5 border-b">
+                  <h3 className="font-semibold">
+                    Stl. {size.size || size.sizeNumber || '-'}
+                    {size.size && size.sizeNumber && size.size !== size.sizeNumber && (
+                      <span className="text-muted-foreground font-normal text-sm ml-1.5">({size.sizeNumber})</span>
+                    )}
                   </h3>
                   <span className="text-sm text-muted-foreground">
-                    Nu i lager: <span className="font-medium text-foreground">{size.currentStock} st</span>
+                    I lager: <span className="font-semibold text-foreground">{size.currentStock} st</span>
                   </span>
                 </div>
 
                 {size.deliveries.length > 0 ? (
                   <Table>
                     <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-[100px]">Datum</TableHead>
-                        <TableHead className="text-right">Antal</TableHead>
-                        <TableHead>Leverantör</TableHead>
+                      <TableRow className="bg-muted/30">
+                        <TableHead className="w-[100px] border-r">Datum</TableHead>
+                        <TableHead className="text-right border-r">Antal</TableHead>
+                        <TableHead className="border-r">Leverantör</TableHead>
                         <TableHead className="text-right">Pris/st</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {size.deliveries.map((delivery, idx) => (
-                        <TableRow key={idx}>
-                          <TableCell className="font-medium">
+                        <TableRow key={idx} className="border-b last:border-b-0">
+                          <TableCell className="font-medium border-r">
                             {formatPeriod(delivery.date)}
                           </TableCell>
-                          <TableCell className="text-right">
+                          <TableCell className="text-right border-r">
                             {delivery.quantity} st
                           </TableCell>
-                          <TableCell className="text-muted-foreground">
+                          <TableCell className="text-muted-foreground border-r">
                             {delivery.supplierName}
                           </TableCell>
                           <TableCell className="text-right">
@@ -150,7 +154,7 @@ export function PurchaseHistoryDialog({
                     </TableBody>
                   </Table>
                 ) : (
-                  <p className="text-sm text-muted-foreground py-2">
+                  <p className="text-sm text-muted-foreground py-4 px-4">
                     Inga leveranser registrerade
                   </p>
                 )}
@@ -158,22 +162,22 @@ export function PurchaseHistoryDialog({
             ))}
 
             {/* Summary footer */}
-            <div className="border-t pt-4 mt-4">
+            <div className="rounded-lg border bg-muted/30 p-4">
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div className="flex items-center gap-2">
                   <TrendingUp className="h-4 w-4 text-muted-foreground" />
                   <span className="text-muted-foreground">Totalt inköpt:</span>
-                  <span className="font-medium">{data.totalQuantityPurchased} st</span>
+                  <span className="font-semibold">{data.totalQuantityPurchased} st</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Package className="h-4 w-4 text-muted-foreground" />
                   <span className="text-muted-foreground">Nu i lager:</span>
-                  <span className="font-medium">{data.currentStock} st</span>
+                  <span className="font-semibold">{data.currentStock} st</span>
                 </div>
                 <div className="flex items-center gap-2 col-span-2">
                   <Calendar className="h-4 w-4 text-muted-foreground" />
                   <span className="text-muted-foreground">Första inköpet:</span>
-                  <span className="font-medium">
+                  <span className="font-semibold">
                     {data.firstPurchaseDate ? formatPeriod(data.firstPurchaseDate) : '-'}
                   </span>
                 </div>

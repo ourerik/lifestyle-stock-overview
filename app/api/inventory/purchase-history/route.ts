@@ -63,9 +63,15 @@ export async function GET(request: NextRequest) {
 
     // Build stock lookup by variantId + sizeNumber
     const stockByKey = new Map<string, number>()
+    // Build size name lookup (sizeNumber -> size) from stock items
+    const sizeNameByKey = new Map<string, string>()
     for (const item of productStockItems) {
       const key = `${item.variantId}-${item.sizeNumber || 'null'}`
       stockByKey.set(key, (stockByKey.get(key) || 0) + item.physicalQuantity)
+      // Store the human-readable size name
+      if (item.size) {
+        sizeNameByKey.set(key, item.size)
+      }
     }
 
     // Aggregate deliveries by variant and size
@@ -145,8 +151,11 @@ export async function GET(request: NextRequest) {
       for (const [sizeNumber, size] of variant.sizes) {
         const stockKey = `${variant.variantId}-${sizeNumber === '' ? 'null' : sizeNumber}`
         const currentStock = stockByKey.get(stockKey) || 0
+        // Get the human-readable size name from stock data
+        const sizeName = sizeNameByKey.get(stockKey) || size.sizeNumber || ''
 
         sizes.push({
+          size: sizeName,
           sizeNumber: size.sizeNumber,
           currentStock,
           totalQuantityPurchased: size.totalQty,
@@ -161,8 +170,8 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      // Sort sizes by sizeNumber
-      sizes.sort((a, b) => (a.sizeNumber || '').localeCompare(b.sizeNumber || ''))
+      // Sort sizes by size name (human-readable)
+      sizes.sort((a, b) => (a.size || '').localeCompare(b.size || '', undefined, { numeric: true }))
 
       variants.push({
         variantId: variant.variantId,
