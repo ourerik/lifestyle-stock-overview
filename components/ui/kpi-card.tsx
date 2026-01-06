@@ -24,30 +24,30 @@ interface KpiCardProps {
 
 const sizeStyles = {
   sm: {
-    title: 'text-xs',
-    value: 'text-base',
-    change: 'text-xs',
+    title: 'text-[12px] md:text-xs',
+    value: 'text-sm md:text-base',
+    change: 'text-[12px] md:text-xs',
     icon: 'h-6 w-6',
     iconWrapper: 'h-8 w-8',
-    suffix: 'text-sm',
+    suffix: 'text-xs md:text-sm',
     skeleton: { value: 'h-5 w-16', change: 'h-3 w-12' },
   },
   md: {
-    title: 'text-sm',
-    value: 'text-xl',
-    change: 'text-xs',
+    title: 'text-[10px] md:text-sm',
+    value: 'text-base md:text-xl',
+    change: 'text-[10px] md:text-xs',
     icon: 'h-7 w-7',
     iconWrapper: 'h-10 w-10',
-    suffix: 'text-base',
+    suffix: 'text-sm md:text-base',
     skeleton: { value: 'h-7 w-20', change: 'h-4 w-14' },
   },
   lg: {
-    title: 'text-sm',
-    value: 'text-2xl',
-    change: 'text-sm',
+    title: 'text-xs md:text-sm',
+    value: 'text-lg md:text-2xl',
+    change: 'text-[10px] md:text-sm',
     icon: 'h-8 w-8',
     iconWrapper: 'h-12 w-12',
-    suffix: 'text-lg',
+    suffix: 'text-base md:text-lg',
     skeleton: { value: 'h-8 w-24', change: 'h-4 w-16' },
   },
 }
@@ -115,13 +115,13 @@ export function KpiCard({
     return (
       <Card
         className={cn(
-          'min-w-[130px] flex-shrink-0 md:min-w-0 md:flex-shrink',
+          'min-w-[130px] flex-shrink-0 md:min-w-0 !py-0 bg-muted/50 !rounded',
           className
         )}
       >
-        <CardContent className="pt-6">
-          <div className="flex items-center justify-between">
-            <div className="space-y-2">
+        <CardContent className="pt-3 pr-3 pb-2 pl-2 md:pt-6 md:px-6 md:pb-6 h-full flex flex-col justify-end">
+          <div className="flex items-end justify-between">
+            <div className="space-y-1">
               <p className={cn('font-medium text-muted-foreground', styles.title)}>
                 {title}
               </p>
@@ -142,13 +142,13 @@ export function KpiCard({
   return (
     <Card
       className={cn(
-        'min-w-[130px] flex-shrink-0 md:min-w-0 md:flex-shrink',
+        'min-w-[130px] flex-shrink-0 md:min-w-0 md:flex-shrink !py-0 bg-muted/50 !rounded',
         className
       )}
     >
-      <CardContent className="pt-6">
-        <div className="flex items-center justify-between">
-          <div className="space-y-1">
+      <CardContent className="pt-6 pr-3 pb-2.5 pl-2.5 md:pt-6 md:px-6 md:pb-6">
+        <div className="flex items-end justify-between">
+          <div className="space-y-0 md:space-y-0.5 leading-tight">
             <p className={cn('font-medium text-muted-foreground', styles.title)}>
               {title}
             </p>
@@ -166,17 +166,17 @@ export function KpiCard({
               )}
             </p>
             {change !== null && change !== undefined && (
-              <div className={cn('flex items-center gap-1', styles.change, changeColorClass)}>
+              <div className={cn('flex items-center gap-0.5 md:gap-1', styles.change, changeColorClass)}>
                 {isPositive ? (
-                  <TrendingUp className="h-3 w-3" />
+                  <TrendingUp className="h-2.5 w-2.5 md:h-3 md:w-3" />
                 ) : isNegative ? (
-                  <TrendingDown className="h-3 w-3" />
+                  <TrendingDown className="h-2.5 w-2.5 md:h-3 md:w-3" />
                 ) : null}
                 <span>
                   {isPositive ? '+' : ''}
                   {change}%
                   {comparisonLabel && (
-                    <span className="text-muted-foreground ml-1">
+                    <span className="hidden md:inline text-muted-foreground ml-1">
                       {comparisonLabel}
                     </span>
                   )}

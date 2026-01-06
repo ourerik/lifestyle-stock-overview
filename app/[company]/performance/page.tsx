@@ -24,7 +24,7 @@ export default async function PerformancePage({ params }: PageProps) {
     <RequireCompanyAccess companyId={companyId}>
       <SidebarInset>
         <Header companyName={companyConfig.name} companySlug={companyId} pageName="Prestation" />
-        <main className="flex-1 p-4 md:p-6 pb-20 md:pb-6">
+        <main className="flex-1 px-4 pb-20 md:px-6 md:pb-6">
           <PerformancePageView companyId={companyId} />
         </main>
       </SidebarInset>

@@ -2,11 +2,25 @@
 
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
-import { RefreshCw, Search, AlertCircle, Info } from 'lucide-react'
+import { RefreshCw, Search, AlertCircle, Info, ChevronDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
 import { KpiCard } from '@/components/ui/kpi-card'
 import { DataTable, ColumnSelector, type Column, type ColumnConfig } from '@/components/ui/data-table'
 import { useColumnVisibility } from '@/hooks/use-column-visibility'
@@ -65,11 +79,11 @@ const columns: Column<ProductPerformance>[] = [
       </div>
     ),
     sortable: true,
-    width: 'min-w-[200px]',
+    width: 'max-w-[200px] md:max-w-none md:min-w-[200px]',
   },
   {
     id: 'medianCustomerAge',
-    label: 'Med. ålder',
+    label: 'Kund',
     accessor: 'medianCustomerAge',
     sortable: true,
     align: 'right',
@@ -295,10 +309,80 @@ export function PerformanceView({
     return `${formatDate(start)} – ${formatDate(end)}`
   }
 
+  // Short date format for mobile
+  const formatDateRangeShort = () => {
+    const start = new Date(dateRange.startDate)
+    const end = new Date(dateRange.endDate)
+    const fmt = (d: Date) => `${d.getDate()}/${d.getMonth() + 1}-${String(d.getFullYear()).slice(2)}`
+    return `${fmt(start)} - ${fmt(end)}`
+  }
+
   return (
     <div className="space-y-6">
-      {/* Header with period tabs and refresh */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
+      {/* Mobile header - compact button group */}
+      <div className="flex md:hidden">
+        <div className="flex w-full rounded-md border bg-background">
+          {/* Period dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="flex-1 justify-between rounded-r-none h-9 bg-muted hover:bg-muted/80">
+                {PERIOD_LABELS[selectedPeriod]}
+                <ChevronDown className="ml-1 h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              {(Object.keys(PERIOD_LABELS) as PerformancePeriod[]).map((period) => (
+                <DropdownMenuItem
+                  key={period}
+                  onClick={() => onPeriodChange(period)}
+                  className={selectedPeriod === period ? 'bg-accent' : ''}
+                >
+                  {PERIOD_LABELS[period]}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* Date range */}
+          <span className="px-3 text-xs text-muted-foreground flex items-center border-l border-r">
+            {formatDateRangeShort()}
+          </span>
+
+          {/* Refresh button */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-9 px-3"
+            onClick={onRefresh}
+            disabled={isRefreshing}
+          >
+            <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+          </Button>
+
+          {/* Info button */}
+          <div className="border-l flex items-center self-stretch">
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button variant="ghost" size="sm" className="rounded-l-none h-9 px-3">
+                  <Info className="h-4 w-4" />
+                </Button>
+              </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Om datan</DialogTitle>
+                <DialogDescription>
+                  <strong>Data visas med 14 dagars fördröjning</strong> för att returer ska hinna komma in och ge en rättvisande bild.
+                  All omsättning och TB visas efter att returer är borträknade.
+                </DialogDescription>
+              </DialogHeader>
+            </DialogContent>
+            </Dialog>
+          </div>
+        </div>
+      </div>
+
+      {/* Desktop header - tabs and info */}
+      <div className="hidden md:flex flex-wrap items-center justify-between gap-4">
         <Tabs value={selectedPeriod} onValueChange={(v) => onPeriodChange(v as PerformancePeriod)}>
           <TabsList>
             {(Object.keys(PERIOD_LABELS) as PerformancePeriod[]).map((period) => (
@@ -309,38 +393,48 @@ export function PerformanceView({
           </TabsList>
         </Tabs>
 
-        <div className="flex items-center gap-4">
-          <span className="text-sm text-muted-foreground">
+        <div className="flex rounded-md border bg-background">
+          <span className="px-3 text-sm text-muted-foreground flex items-center border-r">
             {formatDateRange()}
+            {cachedAt && (
+              <span className="ml-2">
+                • {fromCache ? 'Cache' : 'Ny'} {cachedAt.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            )}
           </span>
-          {cachedAt && (
-            <span className="text-sm text-muted-foreground">
-              • {fromCache ? 'Cache' : 'Ny'} {cachedAt.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' })}
-            </span>
-          )}
           <Button
-            variant="outline"
+            variant="ghost"
             size="sm"
+            className="h-9 px-3 rounded-none"
             onClick={onRefresh}
             disabled={isRefreshing}
           >
             <RefreshCw className={`mr-2 h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
             Uppdatera
           </Button>
+          <div className="border-l flex items-center">
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-9 px-3 rounded-l-none">
+                  <Info className="h-4 w-4" />
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Om datan</DialogTitle>
+                  <DialogDescription>
+                    <strong>Data visas med 14 dagars fördröjning</strong> för att returer ska hinna komma in och ge en rättvisande bild.
+                    All omsättning och TB visas efter att returer är borträknade.
+                  </DialogDescription>
+                </DialogHeader>
+              </DialogContent>
+            </Dialog>
+          </div>
         </div>
       </div>
 
-      {/* Info alert about 14-day delay */}
-      <Alert variant="info">
-        <Info className="h-4 w-4" />
-        <AlertDescription>
-          <strong>Data visas med 14 dagars fördröjning</strong> för att returer ska hinna komma in och ge en rättvisande bild.
-          All omsättning och TB visas efter att returer är borträknade.
-        </AlertDescription>
-      </Alert>
-
       {/* KPI Cards */}
-      <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 md:mx-0 md:px-0 md:grid md:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 md:overflow-visible md:pb-0">
+      <div className="flex gap-2 overflow-x-auto pt-0.5 pb-2 -mx-4 px-4 md:mx-0 md:px-0 md:grid md:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 md:overflow-visible md:pt-0 md:pb-0">
         <KpiCard
           title="Försäljning"
           value={summary?.totalSalesQuantity || 0}
@@ -394,7 +488,8 @@ export function PerformanceView({
         />
       </div>
 
-      {/* Search and column selector */}
+      {/* Search, column selector and table */}
+      <div className="space-y-3">
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-2">
           {/* Expandable search */}
@@ -452,6 +547,7 @@ export function PerformanceView({
         hideColumnSelector
         visibleColumns={visibleColumns}
       />
+      </div>
 
       {/* Detail Sheet */}
       <PerformanceDetailSheet
