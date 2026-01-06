@@ -37,8 +37,8 @@ export interface Column<T> {
   width?: string // Tailwind class like "w-24", "min-w-[200px]"
   defaultVisible?: boolean
   format?: 'currency' | 'percent' | 'number' | 'date'
-  colorCode?: (value: any, row: T) => 'default' | 'success' | 'warning' | 'danger'
-  renderCell?: (value: any, row: T) => ReactNode
+  colorCode?: (value: unknown, row: T) => 'default' | 'success' | 'warning' | 'danger'
+  renderCell?: (value: unknown, row: T) => ReactNode
 }
 
 export interface DataTableProps<T> {
@@ -77,7 +77,7 @@ const colorCodeClasses = {
 // Format Helpers
 // ============================================================================
 
-function formatValue(value: any, format?: Column<any>['format']): ReactNode {
+function formatValue(value: unknown, format?: Column<unknown>['format']): ReactNode {
   if (value === null || value === undefined) {
     return '-'
   }
@@ -93,9 +93,12 @@ function formatValue(value: any, format?: Column<any>['format']): ReactNode {
       if (value instanceof Date) {
         return value.toLocaleDateString('sv-SE')
       }
-      return new Date(value).toLocaleDateString('sv-SE')
+      return new Date(value as string | number).toLocaleDateString('sv-SE')
     default:
-      return value
+      if (typeof value === 'string' || typeof value === 'number') {
+        return value
+      }
+      return String(value)
   }
 }
 
@@ -310,7 +313,7 @@ export function DataTable<T>({
   }
 
   // Get value from accessor
-  const getValue = (row: T, accessor: Column<T>['accessor']): any => {
+  const getValue = (row: T, accessor: Column<T>['accessor']): unknown => {
     if (typeof accessor === 'function') {
       return accessor(row)
     }

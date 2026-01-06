@@ -394,6 +394,7 @@ export function MobileBottomBar() {
                     </div>
                   </div>
                   <SheetClose asChild>
+                    {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
                     <a
                       href="/auth/logout"
                       className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-destructive hover:bg-destructive/10 transition-colors"
@@ -405,6 +406,7 @@ export function MobileBottomBar() {
                 </div>
               ) : (
                 <SheetClose asChild>
+                  {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
                   <a
                     href="/auth/login"
                     className="flex items-center gap-3 rounded-lg px-3 py-2.5 hover:bg-accent transition-colors"
