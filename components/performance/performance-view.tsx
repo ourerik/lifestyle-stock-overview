@@ -26,6 +26,7 @@ import { DataTable, ColumnSelector, type Column, type ColumnConfig } from '@/com
 import { useColumnVisibility } from '@/hooks/use-column-visibility'
 import { PerformanceDetailSheet } from './performance-detail-sheet'
 import { formatCurrency } from '@/lib/utils/currency'
+import { formatDateRangeShort } from '@/lib/utils/date'
 import type { CompanyId } from '@/config/companies'
 import type { PerformanceData, ProductPerformance } from '@/types/performance'
 import type { PerformancePeriod } from './performance-page-view'
@@ -309,13 +310,6 @@ export function PerformanceView({
     return `${formatDate(start)} – ${formatDate(end)}`
   }
 
-  // Short date format for mobile
-  const formatDateRangeShort = () => {
-    const start = new Date(dateRange.startDate)
-    const end = new Date(dateRange.endDate)
-    const fmt = (d: Date) => `${d.getDate()}/${d.getMonth() + 1}-${String(d.getFullYear()).slice(2)}`
-    return `${fmt(start)} - ${fmt(end)}`
-  }
 
   return (
     <div className="space-y-6">
@@ -345,7 +339,7 @@ export function PerformanceView({
 
           {/* Date range */}
           <span className="px-3 text-xs text-muted-foreground flex items-center border-l border-r">
-            {formatDateRangeShort()}
+            {formatDateRangeShort(dateRange)}
           </span>
 
           {/* Refresh button */}
@@ -434,7 +428,7 @@ export function PerformanceView({
       </div>
 
       {/* KPI Cards */}
-      <div className="flex gap-2 overflow-x-auto pt-0.5 pb-2 -mx-4 px-4 mb-3 md:mb-6 md:mx-0 md:px-0 md:grid md:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 md:overflow-visible md:pt-0 md:pb-0">
+      <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 mb-3 md:mb-6 md:mx-0 md:px-0 md:grid md:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 md:overflow-visible md:pb-0">
         <KpiCard
           title="Försäljning"
           value={summary?.totalSalesQuantity || 0}
@@ -534,23 +528,20 @@ export function PerformanceView({
       </div>
 
       {/* Table - full bleed on mobile */}
-      <div className="-mx-4 overflow-x-auto md:mx-0 md:overflow-visible">
-        <div className="inline-block min-w-full pl-4 pr-4 md:pl-0 md:pr-0">
-          <DataTable
-            data={filteredProducts}
-            columns={columns}
-            tableId="performance-products"
-            loading={isLoading}
-            onRowClick={updateProductParam}
-            rowKey="productNumber"
-            defaultSortField="turnover"
-            defaultSortOrder="desc"
-            emptyMessage="Inga produkter hittades"
-            hideColumnSelector
-            visibleColumns={visibleColumns}
-          />
-        </div>
-      </div>
+      <DataTable
+        data={filteredProducts}
+        columns={columns}
+        tableId="performance-products"
+        loading={isLoading}
+        onRowClick={updateProductParam}
+        rowKey="productNumber"
+        defaultSortField="turnover"
+        defaultSortOrder="desc"
+        emptyMessage="Inga produkter hittades"
+        hideColumnSelector
+        visibleColumns={visibleColumns}
+        mobileFullBleed
+      />
       </div>
 
       {/* Detail Sheet */}
@@ -564,7 +555,8 @@ export function PerformanceView({
         companyId={companyId}
         dateRange={dateRange}
         periodMonths={PERIOD_TO_MONTHS[selectedPeriod]}
-        periodLabel={PERIOD_LABELS[selectedPeriod]}
+        onRefresh={onRefresh}
+        isRefreshing={isRefreshing}
       />
     </div>
   )

@@ -256,3 +256,10 @@ export function formatDateDisplay(dateStr: string): string {
     day: 'numeric',
   }).format(date);
 }
+
+export function formatDateRangeShort(dateRange: { startDate: string; endDate: string }): string {
+  const start = new Date(dateRange.startDate)
+  const end = new Date(dateRange.endDate)
+  const fmt = (d: Date) => `${d.getDate()}/${d.getMonth() + 1}-${String(d.getFullYear()).slice(2)}`
+  return `${fmt(start)} - ${fmt(end)}`
+}

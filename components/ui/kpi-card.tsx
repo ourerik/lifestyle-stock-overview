@@ -115,7 +115,7 @@ export function KpiCard({
     return (
       <Card
         className={cn(
-          'min-w-[130px] flex-shrink-0 md:min-w-0 !py-0 bg-muted/50 !rounded',
+          'min-w-[130px] flex-shrink-0 md:min-w-0 !py-0 bg-muted/50 !rounded mt-px',
           className
         )}
       >
@@ -142,7 +142,7 @@ export function KpiCard({
   return (
     <Card
       className={cn(
-        'min-w-[130px] flex-shrink-0 md:min-w-0 md:flex-shrink !py-0 bg-muted/50 !rounded',
+        'min-w-[130px] flex-shrink-0 md:min-w-0 md:flex-shrink !py-0 bg-muted/50 !rounded mt-px',
         className
       )}
     >

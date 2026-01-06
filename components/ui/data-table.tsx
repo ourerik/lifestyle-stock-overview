@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { useColumnVisibility, type ColumnConfig } from '@/hooks/use-column-visibility'
 import { formatCurrency } from '@/lib/utils/currency'
+import { MobileFullBleed } from '@/components/ui/mobile-full-bleed'
 
 // ============================================================================
 // Types
@@ -54,6 +55,7 @@ export interface DataTableProps<T> {
   defaultSortField?: string
   defaultSortOrder?: 'asc' | 'desc'
   actions?: (row: T) => ReactNode // For edit/delete buttons
+  mobileFullBleed?: boolean // Enable full-bleed horizontal scroll on mobile
 }
 
 // ============================================================================
@@ -245,6 +247,7 @@ export function DataTable<T>({
   defaultSortField,
   defaultSortOrder = 'desc',
   actions,
+  mobileFullBleed = false,
 }: DataTableProps<T>) {
   // Sorting state
   const [sortBy, setSortBy] = useState<string | null>(defaultSortField || null)
@@ -357,22 +360,8 @@ export function DataTable<T>({
   // Calculate total column count (visible columns + actions if present)
   const totalColumnCount = displayColumns.length + (actions ? 1 : 0)
 
-  return (
-    <div className="space-y-2">
-      {/* Column selector */}
-      {showColumnSelector && !hideColumnSelector && (
-        <div className="flex justify-end">
-          <ColumnSelector
-            columns={columnConfigs}
-            visibleColumns={visibleColumns}
-            onToggle={toggleColumn}
-            onReset={resetToDefaults}
-          />
-        </div>
-      )}
-
-      {/* Table wrapper with horizontal scroll */}
-      <div className="border rounded-lg overflow-x-auto">
+  const tableContent = (
+    <div className="border rounded-lg overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
@@ -446,7 +435,29 @@ export function DataTable<T>({
             </TableBody>
           )}
         </Table>
-      </div>
+    </div>
+  )
+
+  return (
+    <div className="space-y-2">
+      {/* Column selector */}
+      {showColumnSelector && !hideColumnSelector && (
+        <div className="flex justify-end">
+          <ColumnSelector
+            columns={columnConfigs}
+            visibleColumns={visibleColumns}
+            onToggle={toggleColumn}
+            onReset={resetToDefaults}
+          />
+        </div>
+      )}
+
+      {/* Table wrapper - with optional mobile full-bleed */}
+      {mobileFullBleed ? (
+        <MobileFullBleed>{tableContent}</MobileFullBleed>
+      ) : (
+        tableContent
+      )}
     </div>
   )
 }
