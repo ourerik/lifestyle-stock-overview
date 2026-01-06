@@ -132,6 +132,7 @@ function ColumnSelector({
             key={column.id}
             checked={visibleColumns.includes(column.id)}
             onCheckedChange={() => onToggle(column.id)}
+            onSelect={(e) => e.preventDefault()}
           >
             {column.label}
           </DropdownMenuCheckboxItem>
@@ -140,8 +141,9 @@ function ColumnSelector({
         <DropdownMenuCheckboxItem
           checked={false}
           onCheckedChange={onReset}
+          onSelect={(e) => e.preventDefault()}
         >
-          Aterstall standard
+          Återställ standard
         </DropdownMenuCheckboxItem>
       </DropdownMenuContent>
     </DropdownMenu>

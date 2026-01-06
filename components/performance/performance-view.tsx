@@ -1,10 +1,9 @@
 'use client'
 
-import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
-import { RefreshCw, Search, AlertCircle, Info, ChevronDown } from 'lucide-react'
+import { RefreshCw, AlertCircle, Info, ChevronDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
@@ -22,7 +21,8 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { KpiCard } from '@/components/ui/kpi-card'
-import { DataTable, ColumnSelector, type Column, type ColumnConfig } from '@/components/ui/data-table'
+import { DataTable, type Column, type ColumnConfig } from '@/components/ui/data-table'
+import { TableToolbar } from '@/components/ui/table-toolbar'
 import { useColumnVisibility } from '@/hooks/use-column-visibility'
 import { PerformanceDetailSheet } from './performance-detail-sheet'
 import { formatCurrency } from '@/lib/utils/currency'
@@ -219,8 +219,6 @@ export function PerformanceView({
   companyId,
 }: PerformanceViewProps) {
   const [searchQuery, setSearchQuery] = useState('')
-  const [searchExpanded, setSearchExpanded] = useState(false)
-  const searchInputRef = useRef<HTMLInputElement>(null)
   const searchParams = useSearchParams()
   const router = useRouter()
   const pathname = usePathname()
@@ -230,13 +228,6 @@ export function PerformanceView({
     'performance-products',
     columnConfigs
   )
-
-  // Focus input when search expands
-  useEffect(() => {
-    if (searchExpanded && searchInputRef.current) {
-      searchInputRef.current.focus()
-    }
-  }, [searchExpanded])
 
   // Get selected product from URL
   const productParam = searchParams.get('product')
@@ -482,50 +473,16 @@ export function PerformanceView({
         />
       </div>
 
-      {/* Search, column selector and table */}
-      <div className="space-y-3">
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-2">
-          {/* Expandable search */}
-          <div className="flex items-center">
-            {searchExpanded ? (
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  ref={searchInputRef}
-                  placeholder="Sök produkt..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onBlur={() => {
-                    if (!searchQuery) setSearchExpanded(false)
-                  }}
-                  className="pl-10 w-48 transition-all"
-                />
-              </div>
-            ) : (
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8"
-                onClick={() => setSearchExpanded(true)}
-              >
-                <Search className="h-4 w-4" />
-              </Button>
-            )}
-          </div>
-          {data && (
-            <span className="text-sm text-muted-foreground whitespace-nowrap">
-              {filteredProducts.length} av {data.products.length}
-            </span>
-          )}
-        </div>
-        <ColumnSelector
-          columns={columnConfigs}
-          visibleColumns={visibleColumns}
-          onToggle={toggleColumn}
-          onReset={resetToDefaults}
-        />
-      </div>
+      {/* Toolbar */}
+      <TableToolbar
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        searchPlaceholder="Sök produkt..."
+        columnConfigs={columnConfigs}
+        visibleColumns={visibleColumns}
+        onToggleColumn={toggleColumn}
+        onResetColumns={resetToDefaults}
+      />
 
       {/* Table - full bleed on mobile */}
       <DataTable
@@ -542,7 +499,6 @@ export function PerformanceView({
         visibleColumns={visibleColumns}
         mobileFullBleed
       />
-      </div>
 
       {/* Detail Sheet */}
       <PerformanceDetailSheet
