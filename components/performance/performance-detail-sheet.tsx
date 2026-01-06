@@ -1,13 +1,12 @@
 'use client'
 
 import React, { useState, useEffect, useMemo } from 'react'
-import { Loader2, ChevronRight, ChevronDown, TrendingUp, TrendingDown, Info } from 'lucide-react'
+import { Loader2, ChevronRight, ChevronDown, TrendingUp, TrendingDown, RefreshCw } from 'lucide-react'
 import {
-  Sheet,
-  SheetContent,
+  ResponsiveSheet,
   SheetHeader,
   SheetTitle,
-} from '@/components/ui/sheet'
+} from '@/components/ui/responsive-sheet'
 import {
   Table,
   TableBody,
@@ -16,9 +15,14 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
+import { MobileFullBleed } from '@/components/ui/mobile-full-bleed'
+import { KpiCard } from '@/components/ui/kpi-card'
+import { TableToolbar } from '@/components/ui/table-toolbar'
+import { useColumnVisibility, type ColumnConfig } from '@/hooks/use-column-visibility'
 import { VariantPeriodTable } from './variant-period-table'
 import { formatCurrency } from '@/lib/utils/currency'
+import { formatDateRangeShort } from '@/lib/utils/date'
 import type { CompanyId } from '@/config/companies'
 import type {
   ProductPerformance,
@@ -36,7 +40,8 @@ interface PerformanceDetailSheetProps {
   companyId: Exclude<CompanyId, 'all'>
   dateRange: { startDate: string; endDate: string }
   periodMonths: number // 12, 9, 6, 3, or 1
-  periodLabel: string // e.g. "Ett år", "6 mån"
+  onRefresh: () => void
+  isRefreshing: boolean
 }
 
 // Calculate percentage change between two values
@@ -45,13 +50,6 @@ function calculateChange(current: number, previous: number): number | null {
   return Math.round(((current - previous) / previous) * 100)
 }
 
-// Format date range for display
-function formatDateRange(dateRange: { startDate: string; endDate: string }) {
-  const start = new Date(dateRange.startDate)
-  const end = new Date(dateRange.endDate)
-  const formatDate = (d: Date) => d.toLocaleDateString('sv-SE', { day: 'numeric', month: 'short', year: 'numeric' })
-  return `${formatDate(start)} – ${formatDate(end)}`
-}
 
 export function PerformanceDetailSheet({
   product,
@@ -61,12 +59,43 @@ export function PerformanceDetailSheet({
   companyId,
   dateRange,
   periodMonths,
-  periodLabel,
+  onRefresh,
+  isRefreshing,
 }: PerformanceDetailSheetProps) {
   const [detailData, setDetailData] = useState<ProductPerformanceDetail | null>(null)
   const [previousVariants, setPreviousVariants] = useState<VariantPerformance[] | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [variantSearch, setVariantSearch] = useState('')
+
+  // Column configs for variant table
+  const variantColumnConfigs: ColumnConfig[] = useMemo(() => [
+    { id: 'variant', label: 'Variant', defaultVisible: true },
+    { id: 'sales', label: 'Sålt', defaultVisible: true },
+    { id: 'turnover', label: 'Omsättning', defaultVisible: true },
+    { id: 'tb', label: 'TB', defaultVisible: true },
+    { id: 'tbPercent', label: 'TB%', defaultVisible: true },
+    { id: 'returnRate', label: 'Retur%', defaultVisible: true },
+    { id: 'discount', label: 'Rabatt', defaultVisible: false },
+    { id: 'age', label: 'Med. ålder', defaultVisible: false },
+  ], [])
+
+  const { visibleColumns, toggleColumn, resetToDefaults } = useColumnVisibility(
+    'performance-variant-detail',
+    variantColumnConfigs
+  )
+
+  // Filter variants based on search
+  const filteredVariants = useMemo(() => {
+    if (!detailData?.variants) return []
+    if (!variantSearch) return detailData.variants
+
+    const query = variantSearch.toLowerCase()
+    return detailData.variants.filter(v =>
+      v.variantName.toLowerCase().includes(query) ||
+      v.variantNumber.toLowerCase().includes(query)
+    )
+  }, [detailData?.variants, variantSearch])
 
   // Fetch detail data when sheet opens
   useEffect(() => {
@@ -110,9 +139,13 @@ export function PerformanceDetailSheet({
   if (!product) return null
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:!max-w-5xl overflow-y-auto">
-        <SheetHeader>
+    <ResponsiveSheet
+      open={open}
+      onOpenChange={onOpenChange}
+      desktopClassName="sm:!max-w-5xl"
+    >
+      <SheetHeader>
+        <div className="flex items-start justify-between gap-4">
           <SheetTitle>
             <div>
               <div className="text-lg">{product.productName}</div>
@@ -121,99 +154,82 @@ export function PerformanceDetailSheet({
               </div>
             </div>
           </SheetTitle>
-        </SheetHeader>
-
-        <div className="mt-4 px-6">
-          <Alert variant="info">
-            <Info className="h-4 w-4" />
-            <AlertDescription>
-              Visar data för <strong>{periodLabel}</strong>: {formatDateRange(dateRange)}.
-              {previousProduct && ' Jämförelse mot samma period ett år tidigare.'}
-            </AlertDescription>
-          </Alert>
+          <div className="flex rounded-md border bg-background shrink-0">
+            <span className="px-3 text-xs text-muted-foreground flex items-center border-r">
+              {formatDateRangeShort(dateRange)}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 px-3"
+              onClick={onRefresh}
+              disabled={isRefreshing}
+            >
+              <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+            </Button>
+          </div>
         </div>
+      </SheetHeader>
 
-        <div className="mt-6 space-y-6 px-6">
-          {/* KPI Summary Cards - shows data from the selected period (from product prop) */}
-          <ProductSummaryCards product={product} previousProduct={previousProduct} />
+      <div className="mt-6 space-y-6 px-4 md:px-6 pb-6">
+        {/* KPI Summary Cards - shows data from the selected period (from product prop) */}
+        <ProductSummaryCards product={product} previousProduct={previousProduct} />
 
-          {/* Error state */}
-          {error && (
-            <Alert variant="destructive">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
+        {/* Error state */}
+        {error && (
+          <div className="rounded-md border border-destructive bg-destructive/10 p-3 text-sm text-destructive">
+            {error}
+          </div>
+        )}
 
-          {/* Loading state */}
-          {isLoading && (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        {/* Loading state */}
+        {isLoading && (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          </div>
+        )}
+
+        {/* Variant data */}
+        {!isLoading && detailData && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-medium">Varianter ({filteredVariants.length})</h3>
             </div>
-          )}
 
-          {/* Variant data */}
-          {!isLoading && detailData && (
-            <div className="space-y-4">
-              <h3 className="text-sm font-medium">Varianter ({detailData.variants.length})</h3>
+            {/* Variant search and column selector */}
+            <TableToolbar
+              searchQuery={variantSearch}
+              onSearchChange={setVariantSearch}
+              searchPlaceholder="Sök variant..."
+              columnConfigs={variantColumnConfigs}
+              visibleColumns={visibleColumns}
+              onToggleColumn={toggleColumn}
+              onResetColumns={resetToDefaults}
+            />
 
-              {detailData.variants.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  Ingen variantdata tillgänglig
-                </div>
-              ) : (
-                <VariantsTable
-                  variants={detailData.variants}
-                  previousVariants={previousVariants}
-                  periodDefinitions={detailData.periodDefinitions}
-                />
-              )}
-            </div>
-          )}
+            {filteredVariants.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                {variantSearch ? 'Inga varianter matchade sökningen' : 'Ingen variantdata tillgänglig'}
+              </div>
+            ) : (
+              <VariantsTable
+                variants={filteredVariants}
+                previousVariants={previousVariants}
+                periodDefinitions={detailData.periodDefinitions}
+                visibleColumns={visibleColumns}
+              />
+            )}
+          </div>
+        )}
 
-          {/* No data fallback */}
-          {!isLoading && !detailData && !error && (
-            <div className="text-center py-12 text-muted-foreground">
-              Klicka på en produkt för att se detaljer
-            </div>
-          )}
-        </div>
-      </SheetContent>
-    </Sheet>
-  )
-}
-
-function SummaryCard({
-  title,
-  value,
-  change,
-  invertColors = false,
-}: {
-  title: string
-  value: string
-  change?: number | null
-  invertColors?: boolean
-}) {
-  const isPositive = change !== null && change !== undefined && change > 0
-  const isNegative = change !== null && change !== undefined && change < 0
-  const colorClass = invertColors
-    ? isPositive ? 'text-red-600' : isNegative ? 'text-green-600' : 'text-muted-foreground'
-    : isPositive ? 'text-green-600' : isNegative ? 'text-red-600' : 'text-muted-foreground'
-
-  return (
-    <div className="rounded-lg border bg-card p-3">
-      <div className="text-xs text-muted-foreground">{title}</div>
-      <div className="text-lg font-semibold">{value}</div>
-      {change !== null && change !== undefined && (
-        <div className={`flex items-center gap-1 text-xs ${colorClass}`}>
-          {isPositive ? (
-            <TrendingUp className="h-3 w-3" />
-          ) : isNegative ? (
-            <TrendingDown className="h-3 w-3" />
-          ) : null}
-          <span>{isPositive ? '+' : ''}{change}%</span>
-        </div>
-      )}
-    </div>
+        {/* No data fallback */}
+        {!isLoading && !detailData && !error && (
+          <div className="text-center py-12 text-muted-foreground">
+            Klicka på en produkt för att se detaljer
+          </div>
+        )}
+      </div>
+    </ResponsiveSheet>
   )
 }
 
@@ -232,43 +248,58 @@ function ProductSummaryCards({ product, previousProduct }: { product: ProductPer
   } : null
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
-      <SummaryCard
+    <div className="flex gap-2 overflow-x-auto -mx-4 px-4 pb-2 md:mx-0 md:px-0 md:grid md:grid-cols-4 lg:grid-cols-7 md:gap-3 md:overflow-visible md:pb-0">
+      <KpiCard
         title="Försäljning"
-        value={`${product.salesQuantity.toLocaleString('sv-SE')} st`}
+        value={product.salesQuantity}
+        suffix="st"
+        format="number"
         change={changes?.salesQuantity}
+        size="sm"
       />
-      <SummaryCard
+      <KpiCard
         title="Omsättning"
-        value={formatCurrency(product.turnover)}
+        value={product.turnover}
+        format="currency"
         change={changes?.turnover}
+        size="sm"
       />
-      <SummaryCard
+      <KpiCard
         title="TB"
-        value={formatCurrency(product.tb)}
+        value={product.tb}
+        format="currency"
         change={changes?.tb}
+        size="sm"
       />
-      <SummaryCard
+      <KpiCard
         title="TB%"
-        value={`${product.tbPercent}%`}
+        value={product.tbPercent}
+        suffix="%"
         change={changes?.tbPercent}
+        size="sm"
       />
-      <SummaryCard
+      <KpiCard
         title="Returgrad"
-        value={`${product.returnRate}%`}
+        value={product.returnRate}
+        suffix="%"
         change={changes?.returnRate}
         invertColors
+        size="sm"
       />
-      <SummaryCard
+      <KpiCard
         title="Snittrabatt"
-        value={`${product.avgDiscountPercent}%`}
+        value={product.avgDiscountPercent}
+        suffix="%"
         change={changes?.avgDiscount}
         invertColors
+        size="sm"
       />
-      <SummaryCard
+      <KpiCard
         title="Med. ålder"
-        value={product.medianCustomerAge !== null ? `${product.medianCustomerAge} år` : '-'}
+        value={product.medianCustomerAge !== null ? product.medianCustomerAge : '-'}
+        suffix={product.medianCustomerAge !== null ? 'år' : undefined}
         change={changes?.medianAge}
+        size="sm"
       />
     </div>
   )
@@ -326,12 +357,20 @@ function VariantsTable({
   variants,
   previousVariants,
   periodDefinitions,
+  visibleColumns,
 }: {
   variants: VariantPerformance[]
   previousVariants: VariantPerformance[] | null
   periodDefinitions: RollingPeriod[]
+  visibleColumns?: string[]
 }) {
   const [expandedVariants, setExpandedVariants] = useState<Set<string>>(new Set())
+
+  // Helper to check if a column is visible
+  const isColumnVisible = (columnId: string) => {
+    if (!visibleColumns) return true
+    return visibleColumns.includes(columnId)
+  }
 
   // Create a map of previous variants for easy lookup
   const previousVariantsMap = useMemo(() => {
@@ -354,19 +393,20 @@ function VariantsTable({
   }
 
   return (
+    <MobileFullBleed>
     <div className="rounded-md border overflow-x-auto">
       <Table>
         <TableHeader>
           <TableRow>
             <TableHead className="w-8"></TableHead>
-            <TableHead>Variant</TableHead>
-            <TableHead className="text-right">Sålt</TableHead>
-            <TableHead className="text-right">Omsättning</TableHead>
-            <TableHead className="text-right">TB</TableHead>
-            <TableHead className="text-right">TB%</TableHead>
-            <TableHead className="text-right">Retur%</TableHead>
-            <TableHead className="text-right">Rabatt</TableHead>
-            <TableHead className="text-right">Med. ålder</TableHead>
+            {isColumnVisible('variant') && <TableHead>Variant</TableHead>}
+            {isColumnVisible('sales') && <TableHead className="text-right">Sålt</TableHead>}
+            {isColumnVisible('turnover') && <TableHead className="text-right">Omsättning</TableHead>}
+            {isColumnVisible('tb') && <TableHead className="text-right">TB</TableHead>}
+            {isColumnVisible('tbPercent') && <TableHead className="text-right">TB%</TableHead>}
+            {isColumnVisible('returnRate') && <TableHead className="text-right">Retur%</TableHead>}
+            {isColumnVisible('discount') && <TableHead className="text-right">Rabatt</TableHead>}
+            {isColumnVisible('age') && <TableHead className="text-right">Med. ålder</TableHead>}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -398,42 +438,58 @@ function VariantsTable({
                       <ChevronRight className="h-4 w-4 text-muted-foreground" />
                     )}
                   </TableCell>
-                  <TableCell>
-                    <div className="font-medium text-sm">{variant.variantName}</div>
-                    <div className="text-xs text-muted-foreground">{variant.variantNumber}</div>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="font-medium">{variant.totalSalesQuantity}</div>
-                    <ChangeIndicator change={changes?.sales ?? null} />
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="font-medium">{formatCurrency(variant.totalTurnover)}</div>
-                    <ChangeIndicator change={changes?.turnover ?? null} />
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="font-medium">{formatCurrency(variant.totalTb)}</div>
-                    <ChangeIndicator change={changes?.tb ?? null} />
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div>{formatTbPercent(variant.totalTbPercent)}</div>
-                    <ChangeIndicator change={changes?.tbPercent ?? null} />
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div>{formatReturnRate(variant.totalReturnRate)}</div>
-                    <ChangeIndicator change={changes?.returnRate ?? null} invertColors />
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    <div>{variant.totalAvgDiscountPercent > 0 ? `${variant.totalAvgDiscountPercent}%` : '-'}</div>
-                    <ChangeIndicator change={changes?.discount ?? null} invertColors />
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    <div>{variant.medianCustomerAge !== null ? `${variant.medianCustomerAge} år` : '-'}</div>
-                    <ChangeIndicator change={changes?.age ?? null} />
-                  </TableCell>
+                  {isColumnVisible('variant') && (
+                    <TableCell>
+                      <div className="font-medium text-sm">{variant.variantName}</div>
+                      <div className="text-xs text-muted-foreground">{variant.variantNumber}</div>
+                    </TableCell>
+                  )}
+                  {isColumnVisible('sales') && (
+                    <TableCell className="text-right">
+                      <div className="font-medium">{variant.totalSalesQuantity}</div>
+                      <ChangeIndicator change={changes?.sales ?? null} />
+                    </TableCell>
+                  )}
+                  {isColumnVisible('turnover') && (
+                    <TableCell className="text-right">
+                      <div className="font-medium">{formatCurrency(variant.totalTurnover)}</div>
+                      <ChangeIndicator change={changes?.turnover ?? null} />
+                    </TableCell>
+                  )}
+                  {isColumnVisible('tb') && (
+                    <TableCell className="text-right">
+                      <div className="font-medium">{formatCurrency(variant.totalTb)}</div>
+                      <ChangeIndicator change={changes?.tb ?? null} />
+                    </TableCell>
+                  )}
+                  {isColumnVisible('tbPercent') && (
+                    <TableCell className="text-right">
+                      <div>{formatTbPercent(variant.totalTbPercent)}</div>
+                      <ChangeIndicator change={changes?.tbPercent ?? null} />
+                    </TableCell>
+                  )}
+                  {isColumnVisible('returnRate') && (
+                    <TableCell className="text-right">
+                      <div>{formatReturnRate(variant.totalReturnRate)}</div>
+                      <ChangeIndicator change={changes?.returnRate ?? null} invertColors />
+                    </TableCell>
+                  )}
+                  {isColumnVisible('discount') && (
+                    <TableCell className="text-right text-muted-foreground">
+                      <div>{variant.totalAvgDiscountPercent > 0 ? `${variant.totalAvgDiscountPercent}%` : '-'}</div>
+                      <ChangeIndicator change={changes?.discount ?? null} invertColors />
+                    </TableCell>
+                  )}
+                  {isColumnVisible('age') && (
+                    <TableCell className="text-right text-muted-foreground">
+                      <div>{variant.medianCustomerAge !== null ? `${variant.medianCustomerAge} år` : '-'}</div>
+                      <ChangeIndicator change={changes?.age ?? null} />
+                    </TableCell>
+                  )}
                 </TableRow>
                 {isExpanded && (
                   <tr>
-                    <td colSpan={9} className="p-0 border-b">
+                    <td colSpan={100} className="p-0 border-b">
                       <VariantPeriodTable
                         variant={variant}
                         periodDefinitions={periodDefinitions}
@@ -447,5 +503,6 @@ function VariantsTable({
         </TableBody>
       </Table>
     </div>
+    </MobileFullBleed>
   )
 }

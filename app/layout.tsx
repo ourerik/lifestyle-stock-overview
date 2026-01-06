@@ -5,6 +5,7 @@ import './globals.css';
 import { PeriodProvider } from '@/providers/period-provider';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { AppSidebar } from '@/components/layout/app-sidebar';
+import { MobileBottomBar } from '@/components/layout/mobile-bottom-bar';
 
 const notoSans = Noto_Sans({
   variable: '--font-sans',
@@ -30,6 +31,7 @@ export default function RootLayout({
             <SidebarProvider>
               <AppSidebar />
               {children}
+              <MobileBottomBar />
             </SidebarProvider>
           </PeriodProvider>
         </Auth0Provider>

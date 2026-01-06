@@ -20,7 +20,7 @@ export function AccessDenied({ requestedPath }: AccessDeniedProps) {
   if (isLoading) {
     return (
       <SidebarInset>
-        <Header title="Laddar..." />
+        <Header pageName="Laddar..." />
         <main className="flex-1 p-6 flex items-center justify-center">
           <div className="animate-pulse text-muted-foreground">Kontrollerar behörighet...</div>
         </main>
@@ -35,7 +35,7 @@ export function AccessDenied({ requestedPath }: AccessDeniedProps) {
 
   return (
     <SidebarInset>
-      <Header title="Ingen behörighet" />
+      <Header pageName="Ingen behörighet" />
       <main className="flex-1 p-6 flex items-center justify-center">
         <Card className="max-w-lg w-full">
           <CardHeader className="text-center">
