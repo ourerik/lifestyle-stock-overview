@@ -434,7 +434,7 @@ export function PerformanceView({
       </div>
 
       {/* KPI Cards */}
-      <div className="flex gap-2 overflow-x-auto pt-0.5 pb-2 -mx-4 px-4 md:mx-0 md:px-0 md:grid md:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 md:overflow-visible md:pt-0 md:pb-0">
+      <div className="flex gap-2 overflow-x-auto pt-0.5 pb-2 -mx-4 px-4 mb-3 md:mb-6 md:mx-0 md:px-0 md:grid md:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 md:overflow-visible md:pt-0 md:pb-0">
         <KpiCard
           title="Försäljning"
           value={summary?.totalSalesQuantity || 0}
@@ -533,20 +533,24 @@ export function PerformanceView({
         />
       </div>
 
-      {/* Table */}
-      <DataTable
-        data={filteredProducts}
-        columns={columns}
-        tableId="performance-products"
-        loading={isLoading}
-        onRowClick={updateProductParam}
-        rowKey="productNumber"
-        defaultSortField="turnover"
-        defaultSortOrder="desc"
-        emptyMessage="Inga produkter hittades"
-        hideColumnSelector
-        visibleColumns={visibleColumns}
-      />
+      {/* Table - full bleed on mobile */}
+      <div className="-mx-4 overflow-x-auto md:mx-0 md:overflow-visible">
+        <div className="inline-block min-w-full pl-4 pr-4 md:pl-0 md:pr-0">
+          <DataTable
+            data={filteredProducts}
+            columns={columns}
+            tableId="performance-products"
+            loading={isLoading}
+            onRowClick={updateProductParam}
+            rowKey="productNumber"
+            defaultSortField="turnover"
+            defaultSortOrder="desc"
+            emptyMessage="Inga produkter hittades"
+            hideColumnSelector
+            visibleColumns={visibleColumns}
+          />
+        </div>
+      </div>
       </div>
 
       {/* Detail Sheet */}
