@@ -2,12 +2,11 @@
 
 import { useMemo } from 'react'
 import { Package, AlertTriangle, TrendingUp } from 'lucide-react'
-import { Card, CardContent } from '@/components/ui/card'
-import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
-import { DeliveryTable } from './delivery-table'
+import { KpiCard } from '@/components/ui/kpi-card'
+import { DataTable, type Column } from '@/components/ui/data-table'
 import { formatCurrency } from '@/types/fifo'
-import type { DeliveriesResponse, DeliverySortField } from '@/types/delivery'
+import type { DeliveriesResponse, DeliveryListItem, DeliverySortField } from '@/types/delivery'
 
 interface DeliveriesViewProps {
   data: DeliveriesResponse | null
@@ -48,6 +47,90 @@ export function DeliveriesView({
 
   const totalPages = data ? Math.ceil(data.total / pageSize) : 0
 
+  // Column definitions for DataTable
+  const columns: Column<DeliveryListItem>[] = useMemo(() => [
+    {
+      id: 'createdAt',
+      label: 'Datum',
+      accessor: 'createdAt',
+      sortable: true,
+      width: 'w-28',
+      renderCell: (value) => (
+        <span className="text-muted-foreground">
+          {new Date(value).toLocaleDateString('sv-SE')}
+        </span>
+      ),
+    },
+    {
+      id: 'supplier',
+      label: 'Leverantör',
+      accessor: 'supplier',
+      sortable: true,
+    },
+    {
+      id: 'productName',
+      label: 'Produkt',
+      accessor: (row) => (
+        <div>
+          <div className="font-medium">{row.productName}</div>
+          <div className="text-xs text-muted-foreground">{row.productNumber}</div>
+        </div>
+      ),
+      sortable: true,
+    },
+    {
+      id: 'variantName',
+      label: 'Variant',
+      accessor: 'variantName',
+      sortable: false,
+      renderCell: (value) => <span className="text-muted-foreground">{value}</span>,
+    },
+    {
+      id: 'sizeNumber',
+      label: 'Storlek',
+      accessor: 'sizeNumber',
+      sortable: false,
+      width: 'w-20',
+      renderCell: (value) => <span className="text-muted-foreground">{value || '-'}</span>,
+    },
+    {
+      id: 'quantity',
+      label: 'Antal',
+      accessor: 'quantity',
+      sortable: true,
+      align: 'right',
+      format: 'number',
+      width: 'w-20',
+    },
+    {
+      id: 'unitCostSEK',
+      label: 'Kr/st',
+      accessor: 'unitCostSEK',
+      sortable: true,
+      align: 'right',
+      width: 'w-24',
+      renderCell: (value) => (
+        <span className="text-muted-foreground">{formatCurrency(value)}</span>
+      ),
+    },
+    {
+      id: 'totalCostSEK',
+      label: 'Total',
+      accessor: 'totalCostSEK',
+      sortable: true,
+      align: 'right',
+      width: 'w-28',
+      renderCell: (value) => (
+        <span className="font-medium">{formatCurrency(value)}</span>
+      ),
+    },
+  ], [])
+
+  // Handle sort from DataTable
+  const handleSort = (field: string) => {
+    onSort(field as DeliverySortField)
+  }
+
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -61,48 +144,48 @@ export function DeliveriesView({
   return (
     <div className="space-y-6">
       {/* Summary cards */}
-      <div className="grid gap-4 md:grid-cols-3">
-        <SummaryCard
-          title="Totalt antal rader"
-          value={summary?.totalDeliveries}
-          subtitle="inleveransrader"
+      <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 md:mx-0 md:px-0 md:grid md:gap-4 md:grid-cols-3 md:overflow-visible md:pb-0">
+        <KpiCard
+          title="Leveransrader"
+          value={summary?.totalDeliveries ?? 0}
+          format="number"
+          subtitle="totalt antal rader"
           icon={Package}
-          isLoading={isLoading}
+          loading={isLoading}
         />
-        <SummaryCard
-          title="Totalt antal enheter"
-          value={summary?.totalQuantity}
+        <KpiCard
+          title="Antal enheter"
+          value={summary?.totalQuantity ?? 0}
+          suffix="st"
+          format="number"
           subtitle="på denna sida"
           icon={TrendingUp}
-          isLoading={isLoading}
+          loading={isLoading}
         />
-        <SummaryCard
+        <KpiCard
           title="Totalt värde"
-          value={summary?.totalValue}
-          subtitle="på denna sida (SEK)"
+          value={summary?.totalValue ?? 0}
+          format="currency"
+          subtitle="på denna sida"
           icon={TrendingUp}
-          isLoading={isLoading}
-          formatAsCurrency
+          loading={isLoading}
         />
       </div>
 
       {/* Deliveries table */}
-      {isLoading ? (
-        <div className="space-y-4">
-          {[...Array(10)].map((_, i) => (
-            <Skeleton key={i} className="h-12 w-full" />
-          ))}
-        </div>
-      ) : (
-        <div className="border rounded-lg">
-          <DeliveryTable
-            deliveries={data?.deliveries || []}
-            sortBy={sortBy}
-            sortOrder={sortOrder}
-            onSort={onSort}
-          />
-        </div>
-      )}
+      <DataTable<DeliveryListItem>
+        data={data?.deliveries || []}
+        columns={columns}
+        tableId="deliveries"
+        loading={isLoading}
+        emptyMessage="Inga leveranser hittades"
+        rowKey="id"
+        showColumnSelector={true}
+        sortBy={sortBy}
+        sortOrder={sortOrder}
+        onSort={handleSort}
+        mobileFullBleed
+      />
 
       {/* Pagination */}
       {!isLoading && data && totalPages > 1 && (
@@ -135,45 +218,3 @@ export function DeliveriesView({
   )
 }
 
-interface SummaryCardProps {
-  title: string
-  value: number | undefined
-  subtitle: string
-  icon: React.ComponentType<{ className?: string }>
-  isLoading: boolean
-  formatAsCurrency?: boolean
-}
-
-function SummaryCard({
-  title,
-  value,
-  subtitle,
-  icon: Icon,
-  isLoading,
-  formatAsCurrency = false,
-}: SummaryCardProps) {
-  return (
-    <Card>
-      <CardContent className="pt-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm text-muted-foreground">{title}</p>
-            {isLoading ? (
-              <Skeleton className="h-8 w-20 mt-1" />
-            ) : (
-              <p className="text-2xl font-bold">
-                {value != null
-                  ? formatAsCurrency
-                    ? formatCurrency(value)
-                    : value.toLocaleString('sv-SE')
-                  : '-'}
-              </p>
-            )}
-            <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>
-          </div>
-          <Icon className="h-8 w-8 text-muted-foreground" />
-        </div>
-      </CardContent>
-    </Card>
-  )
-}

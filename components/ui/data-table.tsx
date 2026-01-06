@@ -54,6 +54,10 @@ export interface DataTableProps<T> {
   visibleColumns?: string[] // External control of visible columns
   defaultSortField?: string
   defaultSortOrder?: 'asc' | 'desc'
+  // Controlled sorting (for server-side sorting)
+  sortBy?: string | null
+  sortOrder?: 'asc' | 'desc'
+  onSort?: (field: string) => void
   actions?: (row: T) => ReactNode // For edit/delete buttons
   mobileFullBleed?: boolean // Enable full-bleed horizontal scroll on mobile
 }
@@ -246,12 +250,23 @@ export function DataTable<T>({
   visibleColumns: externalVisibleColumns,
   defaultSortField,
   defaultSortOrder = 'desc',
+  // Controlled sorting props
+  sortBy: controlledSortBy,
+  sortOrder: controlledSortOrder,
+  onSort: controlledOnSort,
   actions,
   mobileFullBleed = false,
 }: DataTableProps<T>) {
-  // Sorting state
-  const [sortBy, setSortBy] = useState<string | null>(defaultSortField || null)
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>(defaultSortOrder)
+  // Determine if sorting is controlled externally
+  const isControlledSort = controlledOnSort !== undefined
+
+  // Internal sorting state (used when not controlled)
+  const [internalSortBy, setInternalSortBy] = useState<string | null>(defaultSortField || null)
+  const [internalSortOrder, setInternalSortOrder] = useState<'asc' | 'desc'>(defaultSortOrder)
+
+  // Use controlled or internal sorting state
+  const sortBy = isControlledSort ? controlledSortBy ?? null : internalSortBy
+  const sortOrder = isControlledSort ? (controlledSortOrder ?? 'desc') : internalSortOrder
 
   // Convert columns to ColumnConfig for the visibility hook
   const columnConfigs: ColumnConfig[] = useMemo(
@@ -277,12 +292,18 @@ export function DataTable<T>({
 
   // Handle sort
   const handleSort = (columnId: string) => {
-    if (sortBy === columnId) {
-      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
+    if (isControlledSort) {
+      // Controlled mode - call the external handler
+      controlledOnSort(columnId)
     } else {
-      setSortBy(columnId)
-      // Default to desc for most fields
-      setSortOrder('desc')
+      // Internal mode - update local state
+      if (sortBy === columnId) {
+        setInternalSortOrder(internalSortOrder === 'asc' ? 'desc' : 'asc')
+      } else {
+        setInternalSortBy(columnId)
+        // Default to desc for most fields
+        setInternalSortOrder('desc')
+      }
     }
   }
 
@@ -304,6 +325,9 @@ export function DataTable<T>({
 
   // Sorted data
   const sortedData = useMemo(() => {
+    // Skip client-side sorting in controlled mode (data is already sorted by server)
+    if (isControlledSort) return data
+
     if (!sortBy) return data
 
     const sortColumn = columns.find((col) => col.id === sortBy)

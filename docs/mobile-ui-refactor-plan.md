@@ -1,7 +1,7 @@
 # Plan: Mobilanpassning + Komponentstandardisering
 
 > **Status:** Pågående
-> **Senast uppdaterad:** 2026-01-05
+> **Senast uppdaterad:** 2026-01-06
 
 ---
 
@@ -55,12 +55,12 @@
 
 | Sida | Uppgift | Status |
 |------|---------|--------|
-| Inventory | Ersätt lokala SummaryCard med KpiCard | ⏳ Ej påbörjad |
-| Inventory | Ersätt InventoryTable med DataTable | ⏳ Ej påbörjad |
-| Deliveries | Ersätt lokal SummaryCard med KpiCard | ⏳ Ej påbörjad |
-| Deliveries | Ersätt DeliveryTable med DataTable | ⏳ Ej påbörjad |
+| Inventory | Ersätt lokala SummaryCard med KpiCard | ✅ Klar |
+| Inventory | Ersätt InventoryTable med DataTable | ✅ Klar |
+| Deliveries | Ersätt lokal SummaryCard med KpiCard | ✅ Klar |
+| Deliveries | Ersätt DeliveryTable med DataTable | ✅ Klar |
 | Dashboard | Ersätt SalesCard med KpiCard | ⏳ Ej påbörjad |
-| Dashboard | Ersätt MetricRow i company-card med KpiCard | ⏳ Ej påbörjad |
+| Dashboard | Behåll MetricRow i company-card | ✅ Beslut: Behålls |
 | Settings | Ersätt ad-costs-list med DataTable | ⏳ Ej påbörjad |
 
 ### Fas 6: Städa upp gamla komponenter
@@ -68,9 +68,9 @@
 | Fil | Status |
 |-----|--------|
 | `components/performance/performance-table.tsx` | ⏳ Kan tas bort |
-| `components/dashboard/sales-card.tsx` | ⏳ Ej påbörjad |
-| `components/inventory/inventory-table.tsx` | ⏳ Ej påbörjad |
-| `components/deliveries/delivery-table.tsx` | ⏳ Ej påbörjad |
+| `components/dashboard/sales-card.tsx` | ⏳ Väntar på Dashboard-migrering |
+| `components/inventory/inventory-table.tsx` | ⏳ Kan tas bort |
+| `components/deliveries/delivery-table.tsx` | ⏳ Kan tas bort |
 
 ---
 
@@ -123,7 +123,12 @@ interface DataTableProps<T> {
   showColumnSelector?: boolean
   defaultSortField?: string
   defaultSortOrder?: 'asc' | 'desc'
+  // Kontrollerad sortering (för server-side)
+  sortBy?: string | null
+  sortOrder?: 'asc' | 'desc'
+  onSort?: (field: string) => void
   actions?: (row: T) => ReactNode
+  mobileFullBleed?: boolean     // full-bleed scroll på mobil
 }
 ```
 
@@ -157,6 +162,11 @@ interface HeaderProps {
 | `mobile-bottom-bar-slots` | Anpassade snabblänkar i bottom bar |
 | `performance-period` | Vald tidsperiod på Performance-sidan |
 
+**tableId-värden:**
+- `performance-products` - Performance-tabellen
+- `inventory-products` - Inventory-tabellen
+- `deliveries` - Deliveries-tabellen
+
 ---
 
 ## Testa
@@ -168,11 +178,21 @@ Följande kan testas nu:
    - Tabell med kolumnväljare
    - Horisontell scroll på tabell
 
-2. **Bottom bar** (alla sidor på mobil)
+2. **Inventory-sidan** (`/sneaky-steve/inventory`)
+   - KPI-kort scrollar horisontellt på mobil
+   - Tabell med kolumnväljare och sortering
+   - Produktdetaljer via radklick
+
+3. **Deliveries-sidan** (`/sneaky-steve/deliveries`)
+   - KPI-kort scrollar horisontellt på mobil
+   - Tabell med server-side sortering
+   - Paginering
+
+4. **Bottom bar** (alla sidor på mobil)
    - 3 snabblänkar + menyknapp
    - Long-press för att ändra snabblänk
    - Meny öppnas från botten
 
-3. **Breadcrumb** (alla sidor)
+5. **Breadcrumb** (alla sidor)
    - Visar `Företag / Sida` format
    - Klickbar länk till företagets dashboard

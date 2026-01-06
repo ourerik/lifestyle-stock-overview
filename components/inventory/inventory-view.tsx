@@ -1,21 +1,22 @@
 'use client'
 
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
-import { Package, AlertTriangle, TrendingUp, Search, RefreshCw, ChevronDown } from 'lucide-react'
+import Image from 'next/image'
+import { Package, AlertTriangle, TrendingUp, Search, RefreshCw, ChevronDown, ChevronRight } from 'lucide-react'
 import { Alert } from '@/components/ui/alert'
-import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Skeleton } from '@/components/ui/skeleton'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { InventoryTable } from './inventory-table'
+import { KpiCard } from '@/components/ui/kpi-card'
+import { DataTable, type Column } from '@/components/ui/data-table'
+import { StatusBadges } from './status-badge'
 import { ProductDetailSheet } from './product-detail-sheet'
 import type { InventoryData, ProductStatus, AggregatedProduct } from '@/types/inventory'
 import type { CompanyId } from '@/config/companies'
@@ -186,6 +187,125 @@ export function InventoryView({
       .sort((a, b) => b.count - a.count)
   }, [filteredByStockProducts])
 
+  // Build columns dynamically based on showZettle
+  const columns = useMemo((): Column<AggregatedProduct>[] => {
+    const baseColumns: Column<AggregatedProduct>[] = [
+      {
+        id: 'productName',
+        label: 'Produkt',
+        accessor: (row) => (
+          <div className="flex items-center gap-3">
+            {row.image ? (
+              <Image
+                src={row.image}
+                alt={row.productName}
+                width={40}
+                height={40}
+                className="rounded object-cover"
+              />
+            ) : (
+              <div className="w-10 h-10 bg-muted rounded flex items-center justify-center text-muted-foreground text-xs">
+                N/A
+              </div>
+            )}
+            <div>
+              <div className="font-medium">{row.productName}</div>
+              <div className="text-xs text-muted-foreground">{row.productNumber}</div>
+            </div>
+          </div>
+        ),
+        sortable: true,
+        width: 'min-w-[200px]',
+      },
+      {
+        id: 'totalQuantity',
+        label: 'Lager',
+        accessor: 'totalQuantity',
+        sortable: true,
+        align: 'right',
+        format: 'number',
+        width: 'w-24',
+      },
+    ]
+
+    // Add Butik column if showZettle is true
+    if (showZettle) {
+      baseColumns.push({
+        id: 'totalZettleQuantity',
+        label: 'Butik',
+        accessor: 'totalZettleQuantity',
+        sortable: true,
+        align: 'right',
+        format: 'number',
+        width: 'w-24',
+      })
+    }
+
+    // Add remaining columns
+    baseColumns.push(
+      {
+        id: 'totalIncoming',
+        label: 'Inkommande',
+        accessor: 'totalIncoming',
+        sortable: true,
+        align: 'right',
+        width: 'w-24',
+        renderCell: (value) =>
+          value > 0 ? (
+            <span className="text-blue-600 dark:text-blue-400 font-medium">+{value}</span>
+          ) : (
+            <span className="text-muted-foreground">-</span>
+          ),
+      },
+      {
+        id: 'fifoValue',
+        label: 'Lagervärde',
+        accessor: 'fifoValue',
+        sortable: true,
+        align: 'right',
+        width: 'w-28',
+        renderCell: (value) =>
+          value != null ? (
+            <span className="font-medium">{formatCurrency(value)}</span>
+          ) : (
+            <span className="text-muted-foreground">-</span>
+          ),
+      },
+      {
+        id: 'fifoCost',
+        label: 'Kr/st',
+        accessor: 'fifoCost',
+        sortable: true,
+        align: 'right',
+        width: 'w-24',
+        defaultVisible: false,
+        renderCell: (value) =>
+          value != null ? (
+            <span className="text-muted-foreground">{formatCurrency(value)}</span>
+          ) : (
+            <span className="text-muted-foreground">-</span>
+          ),
+      },
+      {
+        id: 'status',
+        label: 'Status',
+        accessor: (row) => <StatusBadges statuses={row.status} />,
+        sortable: false,
+        width: 'w-32',
+      },
+      {
+        id: 'action',
+        label: '',
+        accessor: () => <ChevronRight className="h-4 w-4 text-muted-foreground" />,
+        sortable: false,
+        width: 'w-8',
+        align: 'center',
+      }
+    )
+
+    return baseColumns
+  }, [showZettle])
+
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -203,37 +323,45 @@ export function InventoryView({
   return (
     <div className="space-y-6">
       {/* Summary cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <LocationSummaryCard
+      <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 md:mx-0 md:px-0 md:grid md:gap-4 md:grid-cols-2 lg:grid-cols-4 md:overflow-visible md:pb-0">
+        <KpiCard
           title="Lager"
-          quantity={locationStats.warehouse.quantity}
-          products={locationStats.warehouse.products}
-          value={locationStats.warehouse.value}
-          isLoading={isLoading}
+          value={locationStats.warehouse.quantity}
+          suffix="st"
+          format="number"
+          subtitle={`${locationStats.warehouse.products} produkter${locationStats.warehouse.value != null ? ` · ${formatCurrency(locationStats.warehouse.value)}` : ''}`}
+          icon={Package}
+          loading={isLoading}
         />
         {showZettle && (
-          <LocationSummaryCard
+          <KpiCard
             title="Butik"
-            quantity={locationStats.store.quantity}
-            products={locationStats.store.products}
-            value={locationStats.store.value}
-            isLoading={isLoading}
+            value={locationStats.store.quantity}
+            suffix="st"
+            format="number"
+            subtitle={`${locationStats.store.products} produkter${locationStats.store.value != null ? ` · ${formatCurrency(locationStats.store.value)}` : ''}`}
+            icon={Package}
+            loading={isLoading}
           />
         )}
-        <SummaryCard
+        <KpiCard
           title="Lågt lager"
-          value={data?.summary.lowStockCount}
+          value={data?.summary.lowStockCount ?? 0}
+          suffix="st"
+          format="number"
           subtitle="produkter"
           icon={AlertTriangle}
-          isLoading={isLoading}
+          loading={isLoading}
           variant="warning"
         />
-        <SummaryCard
+        <KpiCard
           title="Inkommande"
-          value={data?.summary.incomingCount}
+          value={data?.summary.incomingCount ?? 0}
+          suffix="st"
+          format="number"
           subtitle="produkter med leverans"
           icon={TrendingUp}
-          isLoading={isLoading}
+          loading={isLoading}
           variant="info"
         />
       </div>
@@ -341,21 +469,19 @@ export function InventoryView({
       </div>
 
       {/* Products table */}
-      {isLoading ? (
-        <div className="space-y-4">
-          {[...Array(5)].map((_, i) => (
-            <Skeleton key={i} className="h-16 w-full" />
-          ))}
-        </div>
-      ) : (
-        <div className="border rounded-lg">
-          <InventoryTable
-            products={filteredProducts}
-            showZettle={showZettle}
-            onSelectProduct={updateProductParam}
-          />
-        </div>
-      )}
+      <DataTable<AggregatedProduct>
+        data={filteredProducts}
+        columns={columns}
+        tableId="inventory-products"
+        loading={isLoading}
+        emptyMessage="Inga produkter hittades"
+        onRowClick={updateProductParam}
+        rowKey="productNumber"
+        showColumnSelector={true}
+        defaultSortField="totalQuantity"
+        defaultSortOrder="desc"
+        mobileFullBleed
+      />
 
       {/* Product detail drawer */}
       <ProductDetailSheet
@@ -377,98 +503,3 @@ export function InventoryView({
   )
 }
 
-interface LocationSummaryCardProps {
-  title: string
-  quantity: number
-  products: number
-  value: number | null
-  isLoading: boolean
-}
-
-function LocationSummaryCard({
-  title,
-  quantity,
-  products,
-  value,
-  isLoading,
-}: LocationSummaryCardProps) {
-  return (
-    <Card>
-      <CardContent className="pt-6">
-        <div className="flex items-center justify-between">
-          <div className="space-y-1">
-            <p className="text-sm font-medium text-muted-foreground">{title}</p>
-            {isLoading ? (
-              <Skeleton className="h-8 w-24" />
-            ) : (
-              <>
-                <p className="text-2xl font-bold">{quantity.toLocaleString('sv-SE')} st</p>
-                <p className="text-xs text-muted-foreground">
-                  {products} produkter
-                  {value != null && (
-                    <span className="ml-2 font-semibold text-green-600 dark:text-green-400">
-                      · {formatCurrency(value)}
-                    </span>
-                  )}
-                </p>
-              </>
-            )}
-          </div>
-          <Package className="h-8 w-8 text-muted-foreground" />
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
-
-interface SummaryCardProps {
-  title: string
-  value: number | undefined | null
-  subtitle: string
-  icon: React.ComponentType<{ className?: string }>
-  isLoading: boolean
-  variant?: 'default' | 'warning' | 'info'
-  formatAsCurrency?: boolean
-}
-
-function SummaryCard({
-  title,
-  value,
-  subtitle,
-  icon: Icon,
-  isLoading,
-  variant = 'default',
-  formatAsCurrency = false,
-}: SummaryCardProps) {
-  const iconColorClass =
-    variant === 'warning'
-      ? 'text-amber-500'
-      : variant === 'info'
-        ? 'text-blue-500'
-        : 'text-muted-foreground'
-
-  return (
-    <Card>
-      <CardContent className="pt-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm text-muted-foreground">{title}</p>
-            {isLoading ? (
-              <Skeleton className="h-8 w-20 mt-1" />
-            ) : (
-              <p className="text-2xl font-bold">
-                {value != null
-                  ? formatAsCurrency
-                    ? formatCurrency(value)
-                    : value.toLocaleString('sv-SE')
-                  : '-'}
-              </p>
-            )}
-            <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>
-          </div>
-          <Icon className={`h-8 w-8 ${iconColorClass}`} />
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
