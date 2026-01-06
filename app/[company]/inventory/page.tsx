@@ -23,8 +23,8 @@ export default async function InventoryPage({ params }: PageProps) {
   return (
     <RequireCompanyAccess companyId={companyId}>
       <SidebarInset>
-        <Header title={`Lager - ${companyConfig.name}`} />
-        <main className="flex-1 p-6">
+        <Header companyName={companyConfig.name} companySlug={companyId} pageName="Lager" />
+        <main className="flex-1 p-4 md:p-6 pb-20 md:pb-6">
           <InventoryPageView companyId={companyId} />
         </main>
       </SidebarInset>

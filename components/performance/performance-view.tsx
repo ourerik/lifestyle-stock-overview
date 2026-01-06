@@ -1,15 +1,15 @@
 'use client'
 
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
-import { RefreshCw, Search, AlertCircle, Info, TrendingUp, TrendingDown } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { RefreshCw, Search, AlertCircle, Info } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { PerformanceTable } from './performance-table'
+import { KpiCard } from '@/components/ui/kpi-card'
+import { DataTable, ColumnSelector, type Column, type ColumnConfig } from '@/components/ui/data-table'
+import { useColumnVisibility } from '@/hooks/use-column-visibility'
 import { PerformanceDetailSheet } from './performance-detail-sheet'
 import { formatCurrency } from '@/lib/utils/currency'
 import type { CompanyId } from '@/config/companies'
@@ -53,65 +53,141 @@ function calculateChange(current: number, previous: number): number | null {
   return Math.round(((current - previous) / previous) * 100)
 }
 
-function KpiCard({
-  title,
-  value,
-  suffix,
-  loading,
-  change,
-  invertColors = false,
-}: {
-  title: string
-  value: string | number
-  suffix?: string
-  loading?: boolean
-  change?: number | null
-  invertColors?: boolean // For metrics where lower is better (like return rate)
-}) {
-  if (loading) {
-    return (
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Skeleton className="h-8 w-24" />
-          <Skeleton className="h-4 w-16 mt-1" />
-        </CardContent>
-      </Card>
-    )
-  }
+// Column definitions for DataTable
+const columns: Column<ProductPerformance>[] = [
+  {
+    id: 'productName',
+    label: 'Produkt',
+    accessor: (row) => (
+      <div>
+        <div className="font-medium">{row.productName}</div>
+        <div className="text-xs text-muted-foreground">{row.productNumber}</div>
+      </div>
+    ),
+    sortable: true,
+    width: 'min-w-[200px]',
+  },
+  {
+    id: 'medianCustomerAge',
+    label: 'Med. ålder',
+    accessor: 'medianCustomerAge',
+    sortable: true,
+    align: 'right',
+    width: 'w-24',
+    renderCell: (value) => (
+      <span className="text-muted-foreground">
+        {value !== null ? `${value} år` : '-'}
+      </span>
+    ),
+  },
+  {
+    id: 'salesQuantity',
+    label: 'Sålt',
+    accessor: 'salesQuantity',
+    sortable: true,
+    align: 'right',
+    format: 'number',
+    width: 'w-20',
+  },
+  {
+    id: 'returnRate',
+    label: 'Retur%',
+    accessor: 'returnRate',
+    sortable: true,
+    align: 'right',
+    width: 'w-20',
+    colorCode: (value) =>
+      value > 20 ? 'danger' : value > 10 ? 'warning' : 'default',
+    renderCell: (value, row) => (
+      <span
+        className={
+          row.returnRate > 20
+            ? 'text-destructive font-medium'
+            : row.returnRate > 10
+            ? 'text-yellow-600'
+            : 'text-muted-foreground'
+        }
+      >
+        {value}%
+      </span>
+    ),
+  },
+  {
+    id: 'turnover',
+    label: 'Omsättning',
+    accessor: 'turnover',
+    sortable: true,
+    align: 'right',
+    format: 'currency',
+    width: 'w-28',
+  },
+  {
+    id: 'costs',
+    label: 'Kostnad',
+    accessor: 'costs',
+    sortable: true,
+    align: 'right',
+    format: 'currency',
+    width: 'w-24',
+    renderCell: (value) => (
+      <span className="text-muted-foreground">{formatCurrency(value)}</span>
+    ),
+  },
+  {
+    id: 'tb',
+    label: 'TB',
+    accessor: 'tb',
+    sortable: true,
+    align: 'right',
+    width: 'w-24',
+    renderCell: (value) => (
+      <span className={value < 0 ? 'text-destructive font-medium' : 'font-medium'}>
+        {formatCurrency(value)}
+      </span>
+    ),
+  },
+  {
+    id: 'tbPercent',
+    label: 'TB%',
+    accessor: 'tbPercent',
+    sortable: true,
+    align: 'right',
+    width: 'w-20',
+    renderCell: (value) => (
+      <span
+        className={
+          value < 0
+            ? 'text-destructive font-medium'
+            : value < 30
+            ? 'text-yellow-600'
+            : 'text-green-600 font-medium'
+        }
+      >
+        {value}%
+      </span>
+    ),
+  },
+  {
+    id: 'avgDiscountPercent',
+    label: 'Rabatt',
+    accessor: 'avgDiscountPercent',
+    sortable: true,
+    align: 'right',
+    width: 'w-20',
+    renderCell: (value) => (
+      <span className="text-muted-foreground">
+        {value > 0 ? `${value}%` : '-'}
+      </span>
+    ),
+  },
+]
 
-  const isPositive = change !== null && change !== undefined && change > 0
-  const isNegative = change !== null && change !== undefined && change < 0
-  const colorClass = invertColors
-    ? isPositive ? 'text-red-600' : isNegative ? 'text-green-600' : 'text-muted-foreground'
-    : isPositive ? 'text-green-600' : isNegative ? 'text-red-600' : 'text-muted-foreground'
-
-  return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <p className="text-2xl font-bold">
-          {value}
-          {suffix && <span className="text-lg font-normal text-muted-foreground">{suffix}</span>}
-        </p>
-        {change !== null && change !== undefined && (
-          <div className={`flex items-center gap-1 text-sm ${colorClass}`}>
-            {isPositive ? (
-              <TrendingUp className="h-3 w-3" />
-            ) : isNegative ? (
-              <TrendingDown className="h-3 w-3" />
-            ) : null}
-            <span>{isPositive ? '+' : ''}{change}% vs ett år tidigare</span>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  )
-}
+// Column configs for visibility hook
+const columnConfigs: ColumnConfig[] = columns.map((col) => ({
+  id: col.id,
+  label: col.label,
+  defaultVisible: col.defaultVisible !== false,
+}))
 
 export function PerformanceView({
   data,
@@ -128,9 +204,24 @@ export function PerformanceView({
   companyId,
 }: PerformanceViewProps) {
   const [searchQuery, setSearchQuery] = useState('')
+  const [searchExpanded, setSearchExpanded] = useState(false)
+  const searchInputRef = useRef<HTMLInputElement>(null)
   const searchParams = useSearchParams()
   const router = useRouter()
   const pathname = usePathname()
+
+  // Column visibility
+  const { visibleColumns, toggleColumn, resetToDefaults } = useColumnVisibility(
+    'performance-products',
+    columnConfigs
+  )
+
+  // Focus input when search expands
+  useEffect(() => {
+    if (searchExpanded && searchInputRef.current) {
+      searchInputRef.current.focus()
+    }
+  }, [searchExpanded])
 
   // Get selected product from URL
   const productParam = searchParams.get('product')
@@ -249,73 +340,117 @@ export function PerformanceView({
       </Alert>
 
       {/* KPI Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+      <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 md:mx-0 md:px-0 md:grid md:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 md:overflow-visible md:pb-0">
         <KpiCard
           title="Försäljning"
-          value={isLoading ? '' : `${summary?.totalSalesQuantity.toLocaleString('sv-SE')} st`}
+          value={summary?.totalSalesQuantity || 0}
+          suffix="st"
+          format="number"
           loading={isLoading}
           change={changes?.salesQuantity}
+          comparisonLabel="vs förra året"
         />
         <KpiCard
           title="Omsättning (netto)"
-          value={isLoading ? '' : formatCurrency(summary?.totalTurnover || 0)}
+          value={summary?.totalTurnover || 0}
+          format="currency"
           loading={isLoading}
           change={changes?.turnover}
+          comparisonLabel="vs förra året"
         />
         <KpiCard
           title="TB"
-          value={isLoading ? '' : formatCurrency(summary?.totalTb || 0)}
+          value={summary?.totalTb || 0}
+          format="currency"
           loading={isLoading}
           change={changes?.tb}
+          comparisonLabel="vs förra året"
         />
         <KpiCard
           title="TB%"
-          value={isLoading ? '' : `${summary?.totalTbPercent || 0}`}
+          value={summary?.totalTbPercent || 0}
           suffix="%"
           loading={isLoading}
           change={changes?.tbPercent}
+          comparisonLabel="vs förra året"
         />
         <KpiCard
           title="Returgrad"
-          value={isLoading ? '' : `${summary?.totalReturnRate || 0}`}
+          value={summary?.totalReturnRate || 0}
           suffix="%"
           loading={isLoading}
           change={changes?.returnRate}
           invertColors
+          comparisonLabel="vs förra året"
         />
         <KpiCard
           title="Snittrabatt"
-          value={isLoading ? '' : `${summary?.totalAvgDiscountPercent || 0}`}
+          value={summary?.totalAvgDiscountPercent || 0}
           suffix="%"
           loading={isLoading}
           change={changes?.avgDiscount}
           invertColors
+          comparisonLabel="vs förra året"
         />
       </div>
 
-      {/* Search */}
-      <div className="flex items-center gap-4">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Sök produkt..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
-          />
+      {/* Search and column selector */}
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-2">
+          {/* Expandable search */}
+          <div className="flex items-center">
+            {searchExpanded ? (
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  ref={searchInputRef}
+                  placeholder="Sök produkt..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onBlur={() => {
+                    if (!searchQuery) setSearchExpanded(false)
+                  }}
+                  className="pl-10 w-48 transition-all"
+                />
+              </div>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8"
+                onClick={() => setSearchExpanded(true)}
+              >
+                <Search className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+          {data && (
+            <span className="text-sm text-muted-foreground whitespace-nowrap">
+              {filteredProducts.length} av {data.products.length}
+            </span>
+          )}
         </div>
-        {data && (
-          <span className="text-sm text-muted-foreground">
-            {filteredProducts.length} av {data.products.length} produkter
-          </span>
-        )}
+        <ColumnSelector
+          columns={columnConfigs}
+          visibleColumns={visibleColumns}
+          onToggle={toggleColumn}
+          onReset={resetToDefaults}
+        />
       </div>
 
       {/* Table */}
-      <PerformanceTable
-        products={filteredProducts}
-        isLoading={isLoading}
-        onSelectProduct={updateProductParam}
+      <DataTable
+        data={filteredProducts}
+        columns={columns}
+        tableId="performance-products"
+        loading={isLoading}
+        onRowClick={updateProductParam}
+        rowKey="productNumber"
+        defaultSortField="turnover"
+        defaultSortOrder="desc"
+        emptyMessage="Inga produkter hittades"
+        hideColumnSelector
+        visibleColumns={visibleColumns}
       />
 
       {/* Detail Sheet */}

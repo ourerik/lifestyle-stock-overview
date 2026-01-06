@@ -23,8 +23,8 @@ export default async function DeliveriesPage({ params }: PageProps) {
   return (
     <RequireCompanyAccess companyId={companyId}>
       <SidebarInset>
-        <Header title={`Inleveranser - ${companyConfig.name}`} />
-        <main className="flex-1 p-6">
+        <Header companyName={companyConfig.name} companySlug={companyId} pageName="Inleveranser" />
+        <main className="flex-1 p-4 md:p-6 pb-20 md:pb-6">
           <DeliveriesPageView companyId={companyId} />
         </main>
       </SidebarInset>

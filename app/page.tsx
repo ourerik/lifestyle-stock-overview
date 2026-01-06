@@ -7,8 +7,8 @@ export default function DashboardPage() {
   return (
     <RequireCompanyAccess companyId="all">
       <SidebarInset>
-        <Header title="Dashboard - Översikt" />
-        <main className="flex-1 p-6">
+        <Header pageName="Översikt" />
+        <main className="flex-1 p-4 md:p-6 pb-20 md:pb-6">
           <DashboardView companyId="all" />
         </main>
       </SidebarInset>

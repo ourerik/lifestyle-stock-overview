@@ -23,8 +23,8 @@ export default async function AdCostsPage({ params }: PageProps) {
   return (
     <RequireCompanyAccess companyId={companyId}>
       <SidebarInset>
-        <Header title={`Annonskostnader - ${companyConfig.name}`} />
-        <main className="flex-1 p-6">
+        <Header companyName={companyConfig.name} companySlug={companyId} pageName="Annonskostnader" />
+        <main className="flex-1 p-4 md:p-6 pb-20 md:pb-6">
           <AdCostsPageView companyId={companyId} />
         </main>
       </SidebarInset>
