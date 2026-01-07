@@ -265,7 +265,6 @@ export function ProductDetailSheet({
                   suffix={product.totalIncoming > 0 ? 'st' : undefined}
                   format="number"
                   size="sm"
-                  variant="info"
                 />
                 <KpiCard
                   title="Lagervärde"

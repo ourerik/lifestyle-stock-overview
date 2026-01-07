@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo } from 'react'
-import { Package, AlertTriangle, TrendingUp } from 'lucide-react'
+import { AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { KpiCard } from '@/components/ui/kpi-card'
 import { DataTable, type Column } from '@/components/ui/data-table'
@@ -150,7 +150,6 @@ export function DeliveriesView({
           value={summary?.totalDeliveries ?? 0}
           format="number"
           subtitle="totalt antal rader"
-          icon={Package}
           loading={isLoading}
         />
         <KpiCard
@@ -159,7 +158,6 @@ export function DeliveriesView({
           suffix="st"
           format="number"
           subtitle="på denna sida"
-          icon={TrendingUp}
           loading={isLoading}
         />
         <KpiCard
@@ -167,7 +165,6 @@ export function DeliveriesView({
           value={summary?.totalValue ?? 0}
           format="currency"
           subtitle="på denna sida"
-          icon={TrendingUp}
           loading={isLoading}
         />
       </div>

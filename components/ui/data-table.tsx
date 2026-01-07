@@ -37,8 +37,10 @@ export interface Column<T> {
   width?: string // Tailwind class like "w-24", "min-w-[200px]"
   defaultVisible?: boolean
   format?: 'currency' | 'percent' | 'number' | 'date'
-  colorCode?: (value: unknown, row: T) => 'default' | 'success' | 'warning' | 'danger'
-  renderCell?: (value: unknown, row: T) => ReactNode
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  colorCode?: (value: any, row: T) => 'default' | 'success' | 'warning' | 'danger'
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  renderCell?: (value: any, row: T) => ReactNode
 }
 
 export interface DataTableProps<T> {
@@ -77,7 +79,8 @@ const colorCodeClasses = {
 // Format Helpers
 // ============================================================================
 
-function formatValue(value: unknown, format?: Column<unknown>['format']): ReactNode {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function formatValue(value: any, format?: Column<any>['format']): ReactNode {
   if (value === null || value === undefined) {
     return '-'
   }
@@ -93,12 +96,9 @@ function formatValue(value: unknown, format?: Column<unknown>['format']): ReactN
       if (value instanceof Date) {
         return value.toLocaleDateString('sv-SE')
       }
-      return new Date(value as string | number).toLocaleDateString('sv-SE')
+      return new Date(value).toLocaleDateString('sv-SE')
     default:
-      if (typeof value === 'string' || typeof value === 'number') {
-        return value
-      }
-      return String(value)
+      return value
   }
 }
 
@@ -313,7 +313,8 @@ export function DataTable<T>({
   }
 
   // Get value from accessor
-  const getValue = (row: T, accessor: Column<T>['accessor']): unknown => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const getValue = (row: T, accessor: Column<T>['accessor']): any => {
     if (typeof accessor === 'function') {
       return accessor(row)
     }

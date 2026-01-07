@@ -3,7 +3,7 @@
 import { useState, useMemo, useCallback } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import Image from 'next/image'
-import { Package, AlertTriangle, TrendingUp, RefreshCw, ChevronDown, FolderOpen, Eye } from 'lucide-react'
+import { Package, AlertTriangle, RefreshCw, ChevronDown, FolderOpen, Eye } from 'lucide-react'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
@@ -391,7 +391,6 @@ export function InventoryView({
           suffix="st"
           format="number"
           subtitle={`${locationStats.warehouse.products} produkter${locationStats.warehouse.value != null ? ` · ${formatCurrency(locationStats.warehouse.value)}` : ''}`}
-          icon={Package}
           loading={isLoading}
         />
         {showZettle && (
@@ -401,7 +400,6 @@ export function InventoryView({
             suffix="st"
             format="number"
             subtitle={`${locationStats.store.products} produkter${locationStats.store.value != null ? ` · ${formatCurrency(locationStats.store.value)}` : ''}`}
-            icon={Package}
             loading={isLoading}
           />
         )}
@@ -411,9 +409,7 @@ export function InventoryView({
           suffix="st"
           format="number"
           subtitle="produkter"
-          icon={AlertTriangle}
           loading={isLoading}
-          variant="warning"
         />
         <KpiCard
           title="Inkommande"
@@ -421,9 +417,7 @@ export function InventoryView({
           suffix="st"
           format="number"
           subtitle="produkter med leverans"
-          icon={TrendingUp}
           loading={isLoading}
-          variant="info"
         />
       </div>
 
