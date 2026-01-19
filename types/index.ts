@@ -83,8 +83,47 @@ export interface ZettlePurchasesResponse {
 }
 
 // Period types
-export type PeriodType = 'today' | 'week' | 'month' | 'last-week' | 'last-month';
+export type PeriodType =
+  | 'last-7-days'    // DEFAULT - Senaste 7 dagarna (exakt 168 timmar)
+  | 'today'
+  | 'yesterday'
+  | 'week'
+  | 'last-week'
+  | 'month'
+  | 'last-month'
+  | 'year'           // Detta året
+  | 'last-12-months' // Senaste 12 månaderna
+  | 'last-year'      // Förra året
+  | 'custom';
+
 export type ComparisonType = 'period' | 'year';
+
+// Custom date range for 'custom' period
+export interface CustomDateRange {
+  from: string; // YYYY-MM-DD
+  to: string;   // YYYY-MM-DD
+}
+
+// Time slot types for dashboard visualization
+export type TimeSlotId = 'night' | 'morning' | 'afternoon' | 'evening';
+
+export interface TimeSlot {
+  id: TimeSlotId;
+  label: string;
+  startHour: number;
+  endHour: number;
+}
+
+export interface TimeSlotSalesData {
+  date: string;
+  dayLabel: string;
+  slots: Record<TimeSlotId, { store: number; ecommerce: number }>;
+}
+
+export interface TimeSlotChartData {
+  days: TimeSlotSalesData[];
+  totals: { store: number; ecommerce: number };
+}
 
 export interface DateRange {
   start: string; // ISO format for API

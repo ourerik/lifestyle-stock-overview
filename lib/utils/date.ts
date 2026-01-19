@@ -1,4 +1,4 @@
-import type { PeriodType, ComparisonType, PeriodComparison, DateRange } from '@/types';
+import type { PeriodType, ComparisonType, PeriodComparison, DateRange, CustomDateRange } from '@/types';
 
 const TIMEZONE = 'Europe/Stockholm';
 
@@ -49,6 +49,28 @@ function endOfMonth(date: Date): Date {
   return result;
 }
 
+function startOfYear(date: Date): Date {
+  const result = new Date(date);
+  result.setMonth(0, 1);
+  result.setHours(0, 0, 0, 0);
+  return result;
+}
+
+function endOfYear(date: Date): Date {
+  const result = new Date(date);
+  result.setMonth(11, 31);
+  result.setHours(23, 59, 59, 999);
+  return result;
+}
+
+function formatDateTimeForAPI(date: Date): string {
+  const dateStr = formatDateForAPI(date);
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const seconds = String(date.getSeconds()).padStart(2, '0');
+  return `${dateStr}T${hours}:${minutes}:${seconds}`;
+}
+
 function subDays(date: Date, days: number): Date {
   const result = new Date(date);
   result.setDate(result.getDate() - days);
@@ -80,6 +102,32 @@ export function getDateRange(
   const today = startOfDay(now);
 
   switch (period) {
+    case 'last-7-days': {
+      // Exactly 7 days (168 hours) from now
+      const startDate = subDays(now, 7);
+
+      // Comparison: 7 days before that
+      const previousStart = comparisonType === 'year'
+        ? subYears(startDate, 1)
+        : subDays(startDate, 7);
+      const previousEnd = comparisonType === 'year'
+        ? subYears(now, 1)
+        : subDays(now, 7);
+
+      return {
+        current: {
+          start: formatDateTimeForAPI(startDate),
+          end: formatDateTimeForAPI(now),
+          displayLabel: 'Senaste 7 dagarna',
+        },
+        previous: {
+          start: formatDateTimeForAPI(previousStart),
+          end: formatDateTimeForAPI(previousEnd),
+          displayLabel: comparisonType === 'year' ? 'Samma period förra året' : 'Föregående 7 dagar',
+        },
+      };
+    }
+
     case 'today': {
       // For 'today', we compare with same weekday last week (or last year)
       const previousDay = comparisonType === 'year'
@@ -91,6 +139,26 @@ export function getDateRange(
           start: `${formatDateForAPI(today)}T00:00:00`,
           end: `${formatDateForAPI(now)}T23:59:59`,
           displayLabel: 'Idag',
+        },
+        previous: {
+          start: `${formatDateForAPI(previousDay)}T00:00:00`,
+          end: `${formatDateForAPI(previousDay)}T23:59:59`,
+          displayLabel: comparisonType === 'year' ? 'Samma dag förra året' : 'Samma dag förra veckan',
+        },
+      };
+    }
+
+    case 'yesterday': {
+      const yesterday = subDays(today, 1);
+      const previousDay = comparisonType === 'year'
+        ? subYears(yesterday, 1)
+        : subWeeks(yesterday, 1); // Same weekday last week
+
+      return {
+        current: {
+          start: `${formatDateForAPI(yesterday)}T00:00:00`,
+          end: `${formatDateForAPI(yesterday)}T23:59:59`,
+          displayLabel: 'Igår',
         },
         previous: {
           start: `${formatDateForAPI(previousDay)}T00:00:00`,
@@ -242,6 +310,85 @@ export function getDateRange(
       };
     }
 
+    case 'year': {
+      // This year (from Jan 1 to today)
+      const yearStart = startOfYear(today);
+      const dayOfYear = Math.floor((today.getTime() - yearStart.getTime()) / (1000 * 60 * 60 * 24));
+
+      const previousYearStart = subYears(yearStart, 1);
+      const previousYearEnd = new Date(previousYearStart);
+      previousYearEnd.setDate(previousYearEnd.getDate() + dayOfYear);
+
+      return {
+        current: {
+          start: `${formatDateForAPI(yearStart)}T00:00:00`,
+          end: `${formatDateForAPI(now)}T23:59:59`,
+          displayLabel: 'Detta året',
+        },
+        previous: {
+          start: `${formatDateForAPI(previousYearStart)}T00:00:00`,
+          end: `${formatDateForAPI(previousYearEnd)}T23:59:59`,
+          displayLabel: 'Förra året (samma period)',
+        },
+      };
+    }
+
+    case 'last-12-months': {
+      // Last 12 months (rolling)
+      const startDate = subMonths(startOfMonth(today), 11);
+
+      const previousStart = comparisonType === 'year'
+        ? subYears(startDate, 1)
+        : subMonths(startDate, 12);
+      const previousEnd = comparisonType === 'year'
+        ? subYears(now, 1)
+        : subMonths(now, 12);
+
+      return {
+        current: {
+          start: `${formatDateForAPI(startDate)}T00:00:00`,
+          end: `${formatDateForAPI(now)}T23:59:59`,
+          displayLabel: 'Senaste 12 månaderna',
+        },
+        previous: {
+          start: `${formatDateForAPI(previousStart)}T00:00:00`,
+          end: `${formatDateForAPI(previousEnd)}T23:59:59`,
+          displayLabel: comparisonType === 'year' ? 'Samma period förra året' : 'Föregående 12 månader',
+        },
+      };
+    }
+
+    case 'last-year': {
+      // Last complete year
+      const lastYearStart = startOfYear(subYears(today, 1));
+      const lastYearEnd = endOfYear(lastYearStart);
+
+      const previousYearStart = startOfYear(subYears(today, 2));
+      const previousYearEnd = endOfYear(previousYearStart);
+
+      const yearFormatter = new Intl.DateTimeFormat('sv-SE', {
+        timeZone: TIMEZONE,
+        year: 'numeric',
+      });
+
+      return {
+        current: {
+          start: `${formatDateForAPI(lastYearStart)}T00:00:00`,
+          end: `${formatDateForAPI(lastYearEnd)}T23:59:59`,
+          displayLabel: yearFormatter.format(lastYearStart),
+        },
+        previous: {
+          start: `${formatDateForAPI(previousYearStart)}T00:00:00`,
+          end: `${formatDateForAPI(previousYearEnd)}T23:59:59`,
+          displayLabel: yearFormatter.format(previousYearStart),
+        },
+      };
+    }
+
+    case 'custom':
+      // Custom period requires explicit date range via getCustomDateRange
+      throw new Error('Custom period requires explicit date range. Use getCustomDateRange() instead.');
+
     default:
       throw new Error(`Unknown period type: ${period}`);
   }
@@ -262,4 +409,53 @@ export function formatDateRangeShort(dateRange: { startDate: string; endDate: st
   const end = new Date(dateRange.endDate)
   const fmt = (d: Date) => `${d.getDate()}/${d.getMonth() + 1}-${String(d.getFullYear()).slice(2)}`
   return `${fmt(start)} - ${fmt(end)}`
+}
+
+/**
+ * Get date range for custom period with explicit from/to dates
+ */
+export function getCustomDateRange(
+  customRange: CustomDateRange,
+  comparisonType: ComparisonType = 'period'
+): PeriodComparison {
+  const fromDate = new Date(customRange.from);
+  const toDate = new Date(customRange.to);
+
+  // Calculate days difference for previous period
+  const daysDiff = Math.ceil((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24));
+
+  let previousFrom: Date;
+  let previousTo: Date;
+
+  if (comparisonType === 'year') {
+    previousFrom = subYears(fromDate, 1);
+    previousTo = subYears(toDate, 1);
+  } else {
+    // Previous period of same length
+    previousFrom = subDays(fromDate, daysDiff + 1);
+    previousTo = subDays(fromDate, 1);
+  }
+
+  const dateRangeFormatter = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: TIMEZONE,
+    month: 'short',
+    day: 'numeric',
+  });
+
+  const formatRange = (from: Date, to: Date) => {
+    return `${dateRangeFormatter.format(from)} - ${dateRangeFormatter.format(to)}`;
+  };
+
+  return {
+    current: {
+      start: `${formatDateForAPI(fromDate)}T00:00:00`,
+      end: `${formatDateForAPI(toDate)}T23:59:59`,
+      displayLabel: formatRange(fromDate, toDate),
+    },
+    previous: {
+      start: `${formatDateForAPI(previousFrom)}T00:00:00`,
+      end: `${formatDateForAPI(previousTo)}T23:59:59`,
+      displayLabel: formatRange(previousFrom, previousTo),
+    },
+  };
 }

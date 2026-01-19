@@ -84,6 +84,48 @@ export class ZettleConnector {
     };
   }
 
+  /**
+   * Fetch purchases with timestamps for time-slot aggregation
+   */
+  async fetchPurchasesWithTimestamps(
+    startDate: string,
+    endDate: string
+  ): Promise<Array<{ timestamp: string; amount: number }>> {
+    const token = await this.getAccessToken();
+    let allPurchases: ZettlePurchasesResponse['purchases'] = [];
+    let lastPurchaseHash: string | undefined;
+
+    do {
+      const params = new URLSearchParams({
+        startDate,
+        endDate,
+        limit: '1000',
+      });
+      if (lastPurchaseHash) {
+        params.append('lastPurchaseHash', lastPurchaseHash);
+      }
+
+      const response = await fetch(`${PURCHASES_URL}?${params}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Zettle purchases failed: ${response.status} - ${errorText}`);
+      }
+
+      const data: ZettlePurchasesResponse = await response.json();
+      allPurchases = allPurchases.concat(data.purchases || []);
+      lastPurchaseHash = data.lastPurchaseHash;
+    } while (lastPurchaseHash && allPurchases.length % 1000 === 0 && allPurchases.length > 0);
+
+    // Return purchases with timestamp and net amount (excl VAT) in SEK
+    return allPurchases.map((p) => ({
+      timestamp: p.timestamp,
+      amount: Math.round((p.amount - (p.vatAmount || 0)) / 100),
+    }));
+  }
+
   async fetchInventory(): Promise<ZettleInventoryItem[]> {
     const token = await this.getAccessToken();
 

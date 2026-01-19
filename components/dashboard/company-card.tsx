@@ -1,12 +1,15 @@
 'use client';
 
+import { useEffect, useState, useCallback } from 'react';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { formatCurrency, formatPercentChange } from '@/lib/utils/currency';
-import type { CompanySummary, ChannelSales } from '@/types';
+import type { CompanySummary, ChannelSales, TimeSlotChartData } from '@/types';
 import { cn } from '@/lib/utils';
 import { CompanyLogo } from '@/components/logos';
 import { CompanyId } from '@/config/companies';
+import { usePeriod } from '@/providers/period-provider';
+import { TimeSlotChart } from './time-slot-chart';
 
 interface CompanyCardProps {
   summary: CompanySummary;
@@ -66,6 +69,35 @@ export function CompanyCard({
   summary,
   loading = false,
 }: CompanyCardProps) {
+  const { currentPeriod } = usePeriod();
+  const [timeSlotData, setTimeSlotData] = useState<TimeSlotChartData | null>(null);
+  const [isLoadingChart, setIsLoadingChart] = useState(false);
+
+  // Fetch time-slot data when period is 'last-7-days'
+  const fetchTimeSlots = useCallback(async () => {
+    if (currentPeriod !== 'last-7-days') {
+      setTimeSlotData(null);
+      return;
+    }
+
+    setIsLoadingChart(true);
+    try {
+      const response = await fetch(`/api/dashboard/time-slots?company=${summary.companyId}`);
+      if (response.ok) {
+        const result = await response.json();
+        setTimeSlotData(result.data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch time-slot data:', error);
+    } finally {
+      setIsLoadingChart(false);
+    }
+  }, [currentPeriod, summary.companyId]);
+
+  useEffect(() => {
+    fetchTimeSlots();
+  }, [fetchTimeSlots]);
+
   if (loading) {
     return (
       <Card>
@@ -92,6 +124,13 @@ export function CompanyCard({
         <CompanyLogo companyId={summary.companyId as CompanyId} className="h-5" />
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Time-slot chart for last-7-days period */}
+        {currentPeriod === 'last-7-days' && (
+          <div className="pb-2 border-b">
+            <TimeSlotChart data={timeSlotData} isLoading={isLoadingChart} />
+          </div>
+        )}
+
         {/* Summary metrics */}
         <div className="divide-y">
           <MetricRow

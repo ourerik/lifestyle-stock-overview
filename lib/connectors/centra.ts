@@ -81,6 +81,7 @@ export interface CentraPODeliveryLine {
 interface CentraGraphQLOrder {
   number: number;
   status: string;
+  createdAt?: string;
   grandTotal: {
     value: number;
     currency: { code: string };
@@ -235,6 +236,103 @@ export class CentraConnector {
   private isReturn(order: CentraGraphQLOrder): boolean {
     const returnStatuses = ['returned', 'refunded', 'return', 'cancelled'];
     return returnStatuses.includes(order.status?.toLowerCase() || '');
+  }
+
+  /**
+   * Fetch orders with timestamps for time-slot aggregation (B2C only)
+   */
+  async fetchOrdersWithTimestamps(
+    startDate: string,
+    endDate: string
+  ): Promise<Array<{ createdAt: string; amount: number }>> {
+    // Only B2C orders for time-slot visualization
+    if (this.isB2B) {
+      return [];
+    }
+
+    const fromDate = startDate.replace('T', ' ');
+    const toDate = endDate.replace('T', ' ');
+
+    const query = `
+      query GetOrdersWithTime($from: DateTimeTz!, $to: DateTimeTz!, $page: Int!) {
+        orders(
+          where: {
+            createdAt: { from: $from, to: $to }
+            storeType: DIRECT_TO_CONSUMER
+          }
+          limit: 100
+          page: $page
+        ) {
+          number
+          status
+          createdAt
+          grandTotal {
+            value
+            currency { code }
+            conversionRate
+          }
+          totals {
+            taxIncluded {
+              value
+            }
+          }
+        }
+      }
+    `;
+
+    let allOrders: CentraGraphQLOrder[] = [];
+    let page = 1;
+    let hasMore = true;
+
+    while (hasMore) {
+      const response = await fetch(this.baseUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify({
+          query,
+          variables: {
+            from: fromDate,
+            to: toDate,
+            page,
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Centra GraphQL failed: ${response.status} - ${errorText}`);
+      }
+
+      const result: CentraGraphQLResponse = await response.json();
+
+      if (result.errors && result.errors.length > 0) {
+        throw new Error(`Centra GraphQL errors: ${result.errors.map((e) => e.message).join(', ')}`);
+      }
+
+      const orders = result.data?.orders || [];
+      allOrders = allOrders.concat(orders);
+
+      if (orders.length < 100) {
+        hasMore = false;
+      } else {
+        page++;
+      }
+    }
+
+    // Filter out returns and calculate net amount
+    return allOrders
+      .filter((o) => !this.isReturn(o))
+      .map((o) => ({
+        createdAt: o.createdAt || '',
+        amount: Math.round(
+          ((o.grandTotal?.value || 0) - (o.totals?.taxIncluded?.value || 0)) *
+            (o.grandTotal?.conversionRate || 1)
+        ),
+      }))
+      .filter((o) => o.createdAt); // Only orders with timestamps
   }
 
   /**

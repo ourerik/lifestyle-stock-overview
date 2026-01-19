@@ -2,11 +2,24 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth0 } from '@/lib/auth0';
 import { SalesAggregator } from '@/lib/services/sales-aggregator';
 import { getFromCache, setInCache } from '@/lib/cache/dashboard-cache';
+import { getCustomDateRange } from '@/lib/utils/date';
 import type { CompanyId } from '@/config/companies';
-import type { PeriodType, ComparisonType, Env } from '@/types';
+import type { PeriodType, ComparisonType, Env, CustomDateRange } from '@/types';
 
 const VALID_COMPANIES: CompanyId[] = ['all', 'varg', 'sneaky-steve'];
-const VALID_PERIODS: PeriodType[] = ['today', 'week', 'month', 'last-week', 'last-month'];
+const VALID_PERIODS: PeriodType[] = [
+  'last-7-days',
+  'today',
+  'yesterday',
+  'week',
+  'last-week',
+  'month',
+  'last-month',
+  'year',
+  'last-12-months',
+  'last-year',
+  'custom',
+];
 const VALID_COMPARISONS: ComparisonType[] = ['period', 'year'];
 
 export async function GET(request: NextRequest) {
@@ -22,6 +35,8 @@ export async function GET(request: NextRequest) {
   const period = searchParams.get('period') as PeriodType;
   const comparison = (searchParams.get('comparison') as ComparisonType) || 'period';
   const force = searchParams.get('force') === 'true';
+  const customFrom = searchParams.get('from');
+  const customTo = searchParams.get('to');
 
   // Validate params
   if (!company || !VALID_COMPANIES.includes(company)) {
@@ -45,6 +60,20 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  // Validate custom period params
+  if (period === 'custom' && (!customFrom || !customTo)) {
+    return NextResponse.json(
+      { error: 'Custom period requires from and to parameters' },
+      { status: 400 }
+    );
+  }
+
+  // Build custom date range if needed
+  const customDateRange: CustomDateRange | undefined =
+    period === 'custom' && customFrom && customTo
+      ? { from: customFrom, to: customTo }
+      : undefined;
+
   // Check cache (unless force refresh)
   if (!force) {
     const cached = getFromCache(company, period, comparison);
@@ -61,7 +90,7 @@ export async function GET(request: NextRequest) {
   try {
     const env: Env = process.env as unknown as Env;
     const aggregator = new SalesAggregator(env);
-    const data = await aggregator.fetchDashboardData(company, period, comparison);
+    const data = await aggregator.fetchDashboardData(company, period, comparison, customDateRange);
 
     // Store in cache
     setInCache(company, period, comparison, data);

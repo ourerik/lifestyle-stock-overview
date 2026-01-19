@@ -1,14 +1,23 @@
 import { CentraConnector, ZettleConnector } from '@/lib/connectors';
 import { COMPANIES, type CompanyId } from '@/config/companies';
-import type { Env, SalesData, PeriodType, ComparisonType, SalesOverview, ChannelSales, DashboardData, CompanySummary } from '@/types';
-import { getDateRange } from '@/lib/utils/date';
+import type { Env, SalesData, PeriodType, ComparisonType, SalesOverview, ChannelSales, DashboardData, CompanySummary, TimeSlotChartData, TimeSlotSalesData, TimeSlotId, CustomDateRange } from '@/types';
+import { getDateRange, getCustomDateRange } from '@/lib/utils/date';
 import { calculatePercentChange } from '@/lib/utils/currency';
+import { getTimeSlotFromHour, getDayLabel, formatDateKey } from '@/lib/utils/time-slots';
 
 export class SalesAggregator {
   constructor(private env: Env) {}
 
-  async fetchDashboardData(companyId: CompanyId, period: PeriodType, comparison: ComparisonType = 'period'): Promise<DashboardData> {
-    const { current, previous } = getDateRange(period, comparison);
+  async fetchDashboardData(
+    companyId: CompanyId,
+    period: PeriodType,
+    comparison: ComparisonType = 'period',
+    customDateRange?: CustomDateRange
+  ): Promise<DashboardData> {
+    // Get date ranges - use custom range if provided for 'custom' period
+    const { current, previous } = period === 'custom' && customDateRange
+      ? getCustomDateRange(customDateRange, comparison)
+      : getDateRange(period, comparison);
 
     // Get companies to fetch data for
     const companyConfig = COMPANIES[companyId];
@@ -123,6 +132,104 @@ export class SalesAggregator {
     }
 
     return dashboardData;
+  }
+
+  /**
+   * Fetch time-slot aggregated data for bar chart visualization
+   * Groups sales by day and 6-hour time slots (00-06, 06-12, 12-18, 18-24)
+   * Separates store (Zettle) and e-commerce (Centra B2C), excludes B2B
+   */
+  async fetchTimeSlotData(
+    companyId: CompanyId,
+    startDate: string,
+    endDate: string
+  ): Promise<TimeSlotChartData> {
+    const companyConfig = COMPANIES[companyId];
+    const companyIds: CompanyId[] = companyConfig.companies || [companyId];
+
+    // Initialize structure for all days in range
+    const days = new Map<string, TimeSlotSalesData>();
+
+    // Parse dates and iterate through each day
+    const start = new Date(startDate.split('T')[0]);
+    const end = new Date(endDate.split('T')[0]);
+    const current = new Date(start);
+
+    while (current <= end) {
+      const dateKey = formatDateKey(current);
+      days.set(dateKey, {
+        date: dateKey,
+        dayLabel: getDayLabel(current),
+        slots: {
+          night: { store: 0, ecommerce: 0 },
+          morning: { store: 0, ecommerce: 0 },
+          afternoon: { store: 0, ecommerce: 0 },
+          evening: { store: 0, ecommerce: 0 },
+        },
+      });
+      current.setDate(current.getDate() + 1);
+    }
+
+    // Fetch data from each company
+    for (const id of companyIds) {
+      const config = COMPANIES[id];
+      if (!config.connectors) continue;
+
+      for (const connector of config.connectors) {
+        // Skip B2B connectors
+        if (connector.type === 'centra-b2b') continue;
+
+        try {
+          if (connector.type === 'zettle') {
+            const zettle = new ZettleConnector(this.env, connector.envPrefix);
+            const purchases = await zettle.fetchPurchasesWithTimestamps(startDate, endDate);
+
+            for (const purchase of purchases) {
+              const date = purchase.timestamp.split('T')[0];
+              const hour = new Date(purchase.timestamp).getHours();
+              const slot = getTimeSlotFromHour(hour);
+
+              const day = days.get(date);
+              if (day) {
+                day.slots[slot].store += purchase.amount;
+              }
+            }
+          } else if (connector.type === 'centra-b2c') {
+            const centra = new CentraConnector(this.env, connector.envPrefix, false);
+            const orders = await centra.fetchOrdersWithTimestamps(startDate, endDate);
+
+            for (const order of orders) {
+              const date = order.createdAt.split('T')[0];
+              const hour = new Date(order.createdAt).getHours();
+              const slot = getTimeSlotFromHour(hour);
+
+              const day = days.get(date);
+              if (day) {
+                day.slots[slot].ecommerce += order.amount;
+              }
+            }
+          }
+        } catch (error) {
+          console.error(`Error fetching time-slot data for ${connector.type}:`, error);
+        }
+      }
+    }
+
+    // Calculate totals
+    let totalStore = 0;
+    let totalEcommerce = 0;
+
+    for (const day of days.values()) {
+      for (const slot of Object.values(day.slots)) {
+        totalStore += slot.store;
+        totalEcommerce += slot.ecommerce;
+      }
+    }
+
+    return {
+      days: Array.from(days.values()),
+      totals: { store: totalStore, ecommerce: totalEcommerce },
+    };
   }
 
   private async fetchCompanyData(

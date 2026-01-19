@@ -1,5 +1,6 @@
 'use client'
 
+import { useMemo } from 'react'
 import {
   Table,
   TableBody,
@@ -20,6 +21,57 @@ export function VariantPeriodTable({ variant, periodDefinitions }: VariantPeriod
   const getPeriodMetrics = (periodIndex: number): PeriodMetrics | undefined => {
     return variant.periods.find(p => p.period.periodIndex === periodIndex)
   }
+
+  // Calculate totals from all periods (always sum all 4 periods shown in table)
+  const calculatedTotals = useMemo(() => {
+    let salesQuantity = 0
+    let returnQuantity = 0
+    let turnover = 0
+    let costs = 0
+    let discountWeightedSum = 0
+    let discountCount = 0
+    let ageWeightedSum = 0
+    let ageCount = 0
+
+    for (const period of variant.periods) {
+      salesQuantity += period.salesQuantity
+      returnQuantity += period.returnQuantity
+      turnover += period.turnover
+      costs += period.costs
+
+      if (period.avgDiscountPercent > 0) {
+        discountWeightedSum += period.avgDiscountPercent * period.salesQuantity
+        discountCount += period.salesQuantity
+      }
+
+      if (period.medianCustomerAge && period.medianCustomerAge > 0) {
+        ageWeightedSum += period.medianCustomerAge * period.salesQuantity
+        ageCount += period.salesQuantity
+      }
+    }
+
+    const returnRate = salesQuantity > 0
+      ? Math.round((returnQuantity / salesQuantity) * 1000) / 10
+      : 0
+    const tb = turnover - costs
+    const tbPercent = turnover > 0
+      ? Math.round((tb / turnover) * 1000) / 10
+      : 0
+    const avgDiscountPercent = discountCount > 0
+      ? Math.round((discountWeightedSum / discountCount) * 10) / 10
+      : 0
+    const medianCustomerAge = ageCount > 0
+      ? Math.round(ageWeightedSum / ageCount)
+      : null
+
+    return {
+      salesQuantity,
+      returnRate,
+      medianCustomerAge,
+      avgDiscountPercent,
+      tbPercent,
+    }
+  }, [variant.periods])
 
   // Format value with color for return rate
   const formatReturnRate = (rate: number) => {
@@ -71,7 +123,7 @@ export function VariantPeriodTable({ variant, periodDefinitions }: VariantPeriod
               )
             })}
             <TableCell className="text-center text-sm font-medium border-l">
-              {variant.totalSalesQuantity}
+              {calculatedTotals.salesQuantity}
             </TableCell>
           </TableRow>
 
@@ -87,7 +139,7 @@ export function VariantPeriodTable({ variant, periodDefinitions }: VariantPeriod
               )
             })}
             <TableCell className="text-center text-sm font-medium border-l">
-              {formatReturnRate(variant.totalReturnRate)}
+              {formatReturnRate(calculatedTotals.returnRate)}
             </TableCell>
           </TableRow>
 
@@ -103,7 +155,7 @@ export function VariantPeriodTable({ variant, periodDefinitions }: VariantPeriod
               )
             })}
             <TableCell className="text-center text-sm font-medium text-muted-foreground border-l">
-              {variant.medianCustomerAge ?? '-'}
+              {calculatedTotals.medianCustomerAge ?? '-'}
             </TableCell>
           </TableRow>
 
@@ -119,7 +171,7 @@ export function VariantPeriodTable({ variant, periodDefinitions }: VariantPeriod
               )
             })}
             <TableCell className="text-center text-sm font-medium text-muted-foreground border-l">
-              {variant.totalAvgDiscountPercent}%
+              {calculatedTotals.avgDiscountPercent}%
             </TableCell>
           </TableRow>
 
@@ -135,7 +187,7 @@ export function VariantPeriodTable({ variant, periodDefinitions }: VariantPeriod
               )
             })}
             <TableCell className="text-center text-sm font-medium border-l">
-              {formatTbPercent(variant.totalTbPercent)}
+              {formatTbPercent(calculatedTotals.tbPercent)}
             </TableCell>
           </TableRow>
         </TableBody>

@@ -13,11 +13,16 @@ import { usePeriod } from '@/providers/period-provider';
 import type { PeriodType, ComparisonType } from '@/types';
 
 const PERIOD_OPTIONS: { value: PeriodType; label: string; short: string }[] = [
+  { value: 'last-7-days', label: 'Senaste 7 dagarna', short: '7 dagar' },
   { value: 'today', label: 'Idag', short: 'Idag' },
-  { value: 'week', label: 'Denna vecka', short: 'Vecka' },
-  { value: 'month', label: 'Denna månad', short: 'Månad' },
+  { value: 'yesterday', label: 'Igår', short: 'Igår' },
+  { value: 'week', label: 'Denna veckan', short: 'Vecka' },
   { value: 'last-week', label: 'Förra veckan', short: 'F. vecka' },
+  { value: 'month', label: 'Denna månaden', short: 'Månad' },
   { value: 'last-month', label: 'Förra månaden', short: 'F. månad' },
+  { value: 'year', label: 'Detta året', short: 'År' },
+  { value: 'last-12-months', label: 'Senaste 12 mån', short: '12 mån' },
+  { value: 'last-year', label: 'Förra året', short: 'F. år' },
 ];
 
 const COMPARISON_OPTIONS: { value: ComparisonType; label: string; short: string }[] = [
