@@ -7,6 +7,29 @@ interface CentraGraphQLResponse {
   errors?: Array<{ message: string }>;
 }
 
+interface CentraReturnsResponse {
+  data?: {
+    returns: CentraReturn[];
+  };
+  errors?: Array<{ message: string }>;
+}
+
+interface CentraReturn {
+  id: number;
+  createdAt: string;
+  returnStatus: string;
+  totalQuantity: number;
+  grandTotal: {
+    value: number;
+    currency: { code: string };
+    conversionRate: number;
+  };
+  lines: Array<{
+    quantity: number;
+    lineValue: { value: number };
+  }>;
+}
+
 interface CentraPODeliveryResponse {
   data?: {
     purchaseOrderDeliveries: CentraPODelivery[];
@@ -236,6 +259,107 @@ export class CentraConnector {
   private isReturn(order: CentraGraphQLOrder): boolean {
     const returnStatuses = ['returned', 'refunded', 'return', 'cancelled'];
     return returnStatuses.includes(order.status?.toLowerCase() || '');
+  }
+
+  /**
+   * Fetch actual returns (not just order status) from Centra
+   * This captures partial returns where only some products are returned
+   */
+  async fetchReturns(startDate: string, endDate: string): Promise<SalesData> {
+    const fromDate = startDate.replace('T', ' ');
+    const toDate = endDate.replace('T', ' ');
+
+    const storeType = this.isB2B ? 'WHOLESALE' : 'DIRECT_TO_CONSUMER';
+
+    const query = `
+      query GetReturns($from: DateTimeTz!, $to: DateTimeTz!, $storeType: StoreType!, $page: Int!) {
+        returns(
+          where: {
+            createdAt: { from: $from, to: $to }
+            storeType: $storeType
+          }
+          limit: 100
+          page: $page
+        ) {
+          id
+          returnStatus
+          totalQuantity
+          grandTotal {
+            value
+            currency { code }
+            conversionRate
+          }
+          lines {
+            quantity
+          }
+        }
+      }
+    `;
+
+    let allReturns: CentraReturn[] = [];
+    let page = 1;
+    let hasMore = true;
+
+    while (hasMore) {
+      const response = await fetch(this.baseUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify({
+          query,
+          variables: {
+            from: fromDate,
+            to: toDate,
+            storeType,
+            page,
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Centra GraphQL failed: ${response.status} - ${errorText}`);
+      }
+
+      const result: CentraReturnsResponse = await response.json();
+
+      if (result.errors && result.errors.length > 0) {
+        throw new Error(`Centra GraphQL errors: ${result.errors.map((e) => e.message).join(', ')}`);
+      }
+
+      const returns = result.data?.returns || [];
+      allReturns = allReturns.concat(returns);
+
+      if (returns.length < 100) {
+        hasMore = false;
+      } else {
+        page++;
+      }
+    }
+
+    // Only count completed returns
+    const completedReturns = allReturns.filter(
+      (r) => r.returnStatus === 'COMPLETED'
+    );
+
+    // Calculate totals - convert to SEK using conversionRate
+    const totalAmount = completedReturns.reduce((sum, r) => {
+      const rate = r.grandTotal?.conversionRate || 1;
+      return sum + (r.grandTotal?.value || 0) * rate;
+    }, 0);
+
+    const totalQuantity = completedReturns.reduce(
+      (sum, r) => sum + (r.totalQuantity || 0),
+      0
+    );
+
+    return {
+      amount: Math.round(totalAmount),
+      orderCount: completedReturns.length,
+      productCount: totalQuantity,
+    };
   }
 
   /**

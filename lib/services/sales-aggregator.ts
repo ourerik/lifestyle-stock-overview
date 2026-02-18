@@ -301,6 +301,8 @@ export class SalesAggregator {
         case 'centra-b2b': {
           const isB2B = connector.type === 'centra-b2b';
           const centra = new CentraConnector(this.env, connector.envPrefix, isB2B);
+
+          // Fetch sales data
           const [currentData, previousData] = await Promise.all([
             centra.fetchSales(currentStart, currentEnd),
             centra.fetchSales(previousStart, previousEnd),
@@ -314,11 +316,17 @@ export class SalesAggregator {
             },
           };
 
+          // Fetch actual returns (not order-status based) if tracking is enabled
           if (connector.trackReturns) {
+            const [currentReturns, previousReturns] = await Promise.all([
+              centra.fetchReturns(currentStart, currentEnd),
+              centra.fetchReturns(previousStart, previousEnd),
+            ]);
+
             result.returns = {
-              current: currentData.returns,
-              previous: previousData.returns,
-              percentChange: calculatePercentChange(currentData.returns.amount, previousData.returns.amount),
+              current: currentReturns,
+              previous: previousReturns,
+              percentChange: calculatePercentChange(currentReturns.amount, previousReturns.amount),
             };
           }
 
