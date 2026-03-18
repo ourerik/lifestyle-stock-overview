@@ -63,8 +63,12 @@ export interface ZettleTokenResponse {
 }
 
 export interface ZettleProduct {
+  productUuid?: string;
+  variantUuid?: string;
   quantity: number;
   name?: string;
+  sku?: string;
+  unitPrice?: number;
 }
 
 export interface ZettlePurchase {

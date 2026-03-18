@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { ArrowRight } from 'lucide-react';
 import { Alert } from '@/components/ui/alert';
 import { CompanyCard } from '@/components/dashboard';
+import { TopProducts } from '@/components/dashboard/top-products';
 import { PeriodControls } from '@/components/layout/period-controls';
 import { usePeriod } from '@/providers/period-provider';
 import type { DashboardData, CompanySummary } from '@/types';
@@ -178,6 +179,18 @@ export function DashboardView({ companyId }: DashboardViewProps) {
           ))
         )}
       </div>
+
+      {isAllCompanies ? (
+        <div className="mt-6 grid gap-6 md:grid-cols-2">
+          {(companyConfig.companies || []).map((id) => (
+            <TopProducts key={id} companyId={id as CompanyId} />
+          ))}
+        </div>
+      ) : (
+        <div className="mt-6">
+          <TopProducts companyId={companyId} />
+        </div>
+      )}
     </>
   );
 }

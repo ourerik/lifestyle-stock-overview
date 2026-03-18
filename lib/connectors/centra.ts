@@ -1,4 +1,5 @@
 import type { Env, SalesData } from '@/types';
+import type { ProductSalesItem } from '@/types/top-products';
 
 interface CentraGraphQLResponse {
   data?: {
@@ -118,6 +119,26 @@ interface CentraGraphQLOrder {
   lines: Array<{
     quantity: number;
   }>;
+}
+
+interface CentraProductOrder {
+  number: number;
+  status: string;
+  lines: Array<{
+    quantity: number;
+    product: {
+      productNumber: string;
+      name: string;
+      media?: Array<{ source: { url: string } }>;
+    };
+  }>;
+}
+
+interface CentraProductOrderResponse {
+  data?: {
+    orders: CentraProductOrder[];
+  };
+  errors?: Array<{ message: string }>;
 }
 
 export class CentraConnector {
@@ -626,5 +647,119 @@ export class CentraConnector {
     }
 
     return allLines;
+  }
+
+  /**
+   * Fetch product-level sales data for top-selling products
+   * Returns aggregated quantities per product number
+   */
+  async fetchProductSales(
+    startDate: string,
+    endDate: string
+  ): Promise<ProductSalesItem[]> {
+    const fromDate = startDate.replace('T', ' ');
+    const toDate = endDate.replace('T', ' ');
+
+    const storeType = this.isB2B ? 'WHOLESALE' : 'DIRECT_TO_CONSUMER';
+
+    const query = `
+      query GetOrderProducts($from: DateTimeTz!, $to: DateTimeTz!, $storeType: StoreType!, $page: Int!) {
+        orders(
+          where: {
+            createdAt: { from: $from, to: $to }
+            storeType: $storeType
+          }
+          limit: 100
+          page: $page
+        ) {
+          number
+          status
+          lines {
+            quantity
+            product {
+              productNumber
+              name
+              media(limit: 1) { source { url } }
+            }
+          }
+        }
+      }
+    `;
+
+    let allOrders: CentraProductOrder[] = [];
+    let page = 1;
+    let hasMore = true;
+
+    while (hasMore) {
+      const response = await fetch(this.baseUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify({
+          query,
+          variables: { from: fromDate, to: toDate, storeType, page },
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Centra GraphQL failed: ${response.status} - ${errorText}`);
+      }
+
+      const result: CentraProductOrderResponse = await response.json();
+
+      if (result.errors && result.errors.length > 0) {
+        throw new Error(`Centra GraphQL errors: ${result.errors.map((e) => e.message).join(', ')}`);
+      }
+
+      const orders = result.data?.orders || [];
+      allOrders = allOrders.concat(orders);
+
+      if (orders.length < 100) {
+        hasMore = false;
+      } else {
+        page++;
+      }
+    }
+
+    // Filter out returns
+    const regularOrders = allOrders.filter((o) => !this.isReturn(o as unknown as CentraGraphQLOrder));
+
+    // Aggregate by productNumber
+    const productMap = new Map<string, { name: string; quantity: number; image?: string }>();
+
+    for (const order of regularOrders) {
+      for (const line of order.lines || []) {
+        const productNumber = line.product?.productNumber;
+        if (!productNumber) continue;
+
+        const existing = productMap.get(productNumber);
+        if (existing) {
+          existing.quantity += Number(line.quantity || 0);
+          // Set image if not already set
+          if (!existing.image && line.product.media?.[0]?.source?.url) {
+            existing.image = line.product.media[0].source.url;
+          }
+        } else {
+          productMap.set(productNumber, {
+            name: line.product.name || productNumber,
+            quantity: Number(line.quantity || 0),
+            image: line.product.media?.[0]?.source?.url,
+          });
+        }
+      }
+    }
+
+    // Convert to array and sort by quantity desc
+    return Array.from(productMap.entries())
+      .map(([productNumber, data]) => ({
+        productNumber,
+        productName: data.name,
+        quantity: data.quantity,
+        image: data.image,
+      }))
+      .sort((a, b) => b.quantity - a.quantity);
   }
 }

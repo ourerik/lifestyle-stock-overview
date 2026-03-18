@@ -1,6 +1,7 @@
 import { CentraConnector, ZettleConnector } from '@/lib/connectors';
 import { COMPANIES, type CompanyId } from '@/config/companies';
 import type { Env, SalesData, PeriodType, ComparisonType, SalesOverview, ChannelSales, DashboardData, CompanySummary, TimeSlotChartData, TimeSlotSalesData, TimeSlotId, CustomDateRange } from '@/types';
+import type { TopProductItem, TopProductsData, ProductSalesItem } from '@/types/top-products';
 import { getDateRange, getCustomDateRange } from '@/lib/utils/date';
 import { calculatePercentChange } from '@/lib/utils/currency';
 import { getTimeSlotFromHour, getDayLabel, formatDateKey } from '@/lib/utils/time-slots';
@@ -230,6 +231,107 @@ export class SalesAggregator {
       days: Array.from(days.values()),
       totals: { store: totalStore, ecommerce: totalEcommerce },
     };
+  }
+
+  /**
+   * Fetch top-selling products per company, broken down by channel.
+   * Returns one TopProductsData per company (multiple for 'all').
+   */
+  async fetchTopProducts(
+    companyId: CompanyId,
+    startDate: string,
+    endDate: string
+  ): Promise<TopProductsData[]> {
+    const companyConfig = COMPANIES[companyId];
+    const companyIds: CompanyId[] = companyConfig.companies || [companyId];
+
+    const results: TopProductsData[] = [];
+
+    for (const id of companyIds) {
+      const config = COMPANIES[id];
+      if (!config.connectors) continue;
+
+      const productMap = new Map<string, TopProductItem>();
+      let hasStore = false;
+
+      // Build parallel fetch promises per connector type
+      const fetches: Array<{ type: 'ecom' | 'store' | 'b2b'; promise: Promise<ProductSalesItem[]> }> = [];
+
+      for (const connector of config.connectors) {
+        try {
+          if (connector.type === 'zettle') {
+            // Check if Zettle has credentials
+            const clientId = this.env[`${connector.envPrefix}_CLIENT_ID`] as string;
+            const apiKey = this.env[`${connector.envPrefix}_API_KEY`] as string;
+            if (!clientId || !apiKey) continue;
+
+            hasStore = true;
+            const zettle = new ZettleConnector(this.env, connector.envPrefix);
+            fetches.push({ type: 'store', promise: zettle.fetchProductSales(startDate, endDate) });
+          } else if (connector.type === 'centra-b2c') {
+            const centra = new CentraConnector(this.env, connector.envPrefix, false);
+            fetches.push({ type: 'ecom', promise: centra.fetchProductSales(startDate, endDate) });
+          } else if (connector.type === 'centra-b2b') {
+            const centra = new CentraConnector(this.env, connector.envPrefix, true);
+            fetches.push({ type: 'b2b', promise: centra.fetchProductSales(startDate, endDate) });
+          }
+        } catch (error) {
+          console.error(`Error setting up ${connector.type} for ${config.name}:`, error);
+        }
+      }
+
+      // Fetch all channels in parallel
+      const channelResults = await Promise.allSettled(
+        fetches.map(async (f) => ({ type: f.type, products: await f.promise }))
+      );
+
+      for (const result of channelResults) {
+        if (result.status !== 'fulfilled') {
+          console.error('Channel fetch failed:', result.reason);
+          continue;
+        }
+
+        const { type, products } = result.value;
+
+        for (const product of products) {
+          const existing = productMap.get(product.productNumber);
+          if (existing) {
+            existing.channels[type] += product.quantity;
+            existing.totalQuantity += product.quantity;
+            // Prefer Centra name and image (ecom/b2b) over Zettle
+            if (type !== 'store') {
+              if (product.productName) existing.productName = product.productName;
+              if (product.image) existing.image = product.image;
+            }
+          } else {
+            productMap.set(product.productNumber, {
+              productNumber: product.productNumber,
+              productName: product.productName,
+              image: product.image,
+              channels: {
+                ecom: type === 'ecom' ? product.quantity : 0,
+                store: type === 'store' ? product.quantity : 0,
+                b2b: type === 'b2b' ? product.quantity : 0,
+              },
+              totalQuantity: product.quantity,
+            });
+          }
+        }
+      }
+
+      // Sort by total quantity descending
+      const sortedProducts = Array.from(productMap.values())
+        .sort((a, b) => b.totalQuantity - a.totalQuantity);
+
+      results.push({
+        companyId: id,
+        companyName: config.name,
+        products: sortedProducts,
+        hasStore,
+      });
+    }
+
+    return results;
   }
 
   private async fetchCompanyData(

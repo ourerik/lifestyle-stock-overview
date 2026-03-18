@@ -1,5 +1,6 @@
 import type { Env, SalesData, ZettleTokenResponse, ZettlePurchasesResponse } from '@/types';
 import type { ZettleInventoryItem } from '@/types/inventory';
+import type { ProductSalesItem } from '@/types/top-products';
 
 const TOKEN_URL = 'https://oauth.zettle.com/token';
 const PURCHASES_URL = 'https://purchase.izettle.com/purchases/v2';
@@ -124,6 +125,77 @@ export class ZettleConnector {
       timestamp: p.timestamp,
       amount: Math.round((p.amount - (p.vatAmount || 0)) / 100),
     }));
+  }
+
+  /**
+   * Fetch product-level sales data from Zettle purchases.
+   * Groups by productUuid and extracts productNumber from SKU.
+   */
+  async fetchProductSales(
+    startDate: string,
+    endDate: string
+  ): Promise<ProductSalesItem[]> {
+    const token = await this.getAccessToken();
+    let allPurchases: ZettlePurchasesResponse['purchases'] = [];
+    let lastPurchaseHash: string | undefined;
+
+    do {
+      const params = new URLSearchParams({
+        startDate,
+        endDate,
+        limit: '1000',
+      });
+      if (lastPurchaseHash) {
+        params.append('lastPurchaseHash', lastPurchaseHash);
+      }
+
+      const response = await fetch(`${PURCHASES_URL}?${params}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Zettle purchases failed: ${response.status} - ${errorText}`);
+      }
+
+      const data: ZettlePurchasesResponse = await response.json();
+      allPurchases = allPurchases.concat(data.purchases || []);
+      lastPurchaseHash = data.lastPurchaseHash;
+    } while (lastPurchaseHash && allPurchases.length % 1000 === 0 && allPurchases.length > 0);
+
+    // Aggregate products by productNumber (extracted from SKU)
+    const productMap = new Map<string, { name: string; quantity: number }>();
+
+    for (const purchase of allPurchases) {
+      for (const product of purchase.products || []) {
+        const quantity = Number(product.quantity || 0);
+        if (quantity <= 0) continue;
+
+        const sku = product.sku || '';
+        // SKU format: {productNumber(7)}{variantNumber(4)}{sizeNumber(2)}
+        // Extract productNumber from first 7 chars of SKU
+        const productNumber = sku.length >= 7 ? sku.slice(0, 7) : '';
+        const key = productNumber || product.name || 'unknown';
+
+        const existing = productMap.get(key);
+        if (existing) {
+          existing.quantity += quantity;
+        } else {
+          productMap.set(key, {
+            name: product.name || key,
+            quantity,
+          });
+        }
+      }
+    }
+
+    return Array.from(productMap.entries())
+      .map(([productNumber, data]) => ({
+        productNumber,
+        productName: data.name,
+        quantity: data.quantity,
+      }))
+      .sort((a, b) => b.quantity - a.quantity);
   }
 
   async fetchInventory(): Promise<ZettleInventoryItem[]> {
