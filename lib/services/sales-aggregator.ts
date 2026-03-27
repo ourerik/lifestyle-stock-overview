@@ -57,23 +57,26 @@ export class SalesAggregator {
       for (const channel of result.channels) {
         allChannels.push(channel);
 
-        // Total aggregation
-        totalCurrent += channel.sales.current.amount;
-        totalPrevious += channel.sales.previous.amount;
-        totalOrdersCurrent += channel.sales.current.orderCount;
-        totalOrdersPrevious += channel.sales.previous.orderCount;
-        totalProductsCurrent += channel.sales.current.productCount;
-        totalProductsPrevious += channel.sales.previous.productCount;
+        // Skip channels excluded from totals (e.g., B2B orders — replaced by shipped)
+        if (!channel.excludeFromTotals) {
+          // Total aggregation
+          totalCurrent += channel.sales.current.amount;
+          totalPrevious += channel.sales.previous.amount;
+          totalOrdersCurrent += channel.sales.current.orderCount;
+          totalOrdersPrevious += channel.sales.previous.orderCount;
+          totalProductsCurrent += channel.sales.current.productCount;
+          totalProductsPrevious += channel.sales.previous.productCount;
 
-        // Company aggregation
-        companyTotalCurrent += channel.sales.current.amount;
-        companyTotalPrevious += channel.sales.previous.amount;
-        companyOrdersCurrent += channel.sales.current.orderCount;
-        companyOrdersPrevious += channel.sales.previous.orderCount;
-        companyProductsCurrent += channel.sales.current.productCount;
-        companyProductsPrevious += channel.sales.previous.productCount;
+          // Company aggregation
+          companyTotalCurrent += channel.sales.current.amount;
+          companyTotalPrevious += channel.sales.previous.amount;
+          companyOrdersCurrent += channel.sales.current.orderCount;
+          companyOrdersPrevious += channel.sales.previous.orderCount;
+          companyProductsCurrent += channel.sales.current.productCount;
+          companyProductsPrevious += channel.sales.previous.productCount;
+        }
 
-        // B2C aggregation (exclude B2B channels)
+        // B2C aggregation (exclude all B2B channels)
         const isB2B = channel.channel.includes('centra-b2b');
         if (!isB2B) {
           b2cAmountCurrent += channel.sales.current.amount;
@@ -178,7 +181,7 @@ export class SalesAggregator {
 
       for (const connector of config.connectors) {
         // Skip B2B connectors
-        if (connector.type === 'centra-b2b') continue;
+        if (connector.type === 'centra-b2b' || connector.type === 'centra-b2b-shipped') continue;
 
         try {
           if (connector.type === 'zettle') {
@@ -274,6 +277,9 @@ export class SalesAggregator {
           } else if (connector.type === 'centra-b2b') {
             const centra = new CentraConnector(this.env, connector.envPrefix, true);
             fetches.push({ type: 'b2b', promise: centra.fetchProductSales(startDate, endDate) });
+          } else if (connector.type === 'centra-b2b-shipped') {
+            // Skip — product counts already captured by centra-b2b
+            continue;
           }
         } catch (error) {
           console.error(`Error setting up ${connector.type} for ${config.name}:`, error);
@@ -362,6 +368,7 @@ export class SalesAggregator {
           channels.push({
             channel: `${companyId}-${connector.type}`,
             label: `${config.name} - ${connector.label}`,
+            excludeFromTotals: connector.excludeFromTotals,
             ...channelData,
           });
         }
@@ -433,6 +440,23 @@ export class SalesAggregator {
           }
 
           return result;
+        }
+
+        case 'centra-b2b-shipped': {
+          const centra = new CentraConnector(this.env, connector.envPrefix, true);
+
+          const [currentData, previousData] = await Promise.all([
+            centra.fetchShippedSales(currentStart, currentEnd),
+            centra.fetchShippedSales(previousStart, previousEnd),
+          ]);
+
+          return {
+            sales: {
+              current: currentData,
+              previous: previousData,
+              percentChange: calculatePercentChange(currentData.amount, previousData.amount),
+            },
+          };
         }
 
         default:

@@ -192,23 +192,49 @@ export function CompanyCard({
         </div>
 
         {/* Channel breakdown */}
-        {channels && channels.length > 0 && (
-          <div className="pt-2 border-t">
-            <p className="text-xs font-medium text-muted-foreground mb-2">Försäljning per kanal</p>
-            <div className="space-y-0.5">
-              {channels.map((channel) => (
-                <MetricRow
-                  key={channel.channel}
-                  label={getChannelDisplayName(channel)}
-                  current={channel.sales.current.amount}
-                  previous={channel.sales.previous.amount}
-                  format="currency"
-                  small
-                />
-              ))}
-            </div>
-          </div>
-        )}
+        {channels && channels.length > 0 && (() => {
+          const salesChannels = channels.filter(ch => !ch.excludeFromTotals);
+          const newOrderChannels = channels.filter(ch => ch.excludeFromTotals);
+
+          return (
+            <>
+              {salesChannels.length > 0 && (
+                <div className="pt-2 border-t">
+                  <p className="text-xs font-medium text-muted-foreground mb-2">Försäljning per kanal</p>
+                  <div className="space-y-0.5">
+                    {salesChannels.map((channel) => (
+                      <MetricRow
+                        key={channel.channel}
+                        label={getChannelDisplayName(channel)}
+                        current={channel.sales.current.amount}
+                        previous={channel.sales.previous.amount}
+                        format="currency"
+                        small
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+              {newOrderChannels.length > 0 && (
+                <div className="pt-2 border-t">
+                  <p className="text-xs font-medium text-muted-foreground mb-2">Nya ordrar</p>
+                  <div className="space-y-0.5">
+                    {newOrderChannels.map((channel) => (
+                      <MetricRow
+                        key={channel.channel}
+                        label={getChannelDisplayName(channel)}
+                        current={channel.sales.current.amount}
+                        previous={channel.sales.previous.amount}
+                        format="currency"
+                        small
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          );
+        })()}
       </CardContent>
     </Card>
   );

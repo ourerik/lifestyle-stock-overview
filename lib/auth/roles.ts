@@ -25,6 +25,7 @@ const USER_ROLES: Record<string, Role[]> = {
   'jacob@fdivision.com': ['Sneaky Steve'],
   'kristian.torsson@sneakysteve.com': ['Sneaky Steve'],
   'robert@ourstudio.se': ['Admin'],
+  'viktor@4run.se': ['Sneaky Steve'],
   // Add more users here:
   // 'user@example.com': ['Varg'],
   // 'another@example.com': ['Sneaky Steve'],

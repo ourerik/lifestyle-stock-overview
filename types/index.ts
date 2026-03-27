@@ -16,13 +16,14 @@ export interface Env {
 }
 
 // Connector configuration types
-export type ConnectorType = 'zettle' | 'centra-b2c' | 'centra-b2b';
+export type ConnectorType = 'zettle' | 'centra-b2c' | 'centra-b2b' | 'centra-b2b-shipped';
 
 export interface BaseConnectorConfig {
   type: ConnectorType;
   label: string;
   envPrefix: string;
   showIfZero: boolean;
+  excludeFromTotals?: boolean;
 }
 
 export interface ZettleConnectorConfig extends BaseConnectorConfig {
@@ -30,8 +31,8 @@ export interface ZettleConnectorConfig extends BaseConnectorConfig {
 }
 
 export interface CentraConnectorConfig extends BaseConnectorConfig {
-  type: 'centra-b2c' | 'centra-b2b';
-  trackReturns: boolean;
+  type: 'centra-b2c' | 'centra-b2b' | 'centra-b2b-shipped';
+  trackReturns?: boolean;
 }
 
 export type ConnectorConfig = ZettleConnectorConfig | CentraConnectorConfig;
@@ -152,6 +153,7 @@ export interface ChannelSales {
   label: string;
   sales: SalesOverview;
   returns?: SalesOverview;
+  excludeFromTotals?: boolean;
 }
 
 export interface CompanySummary {

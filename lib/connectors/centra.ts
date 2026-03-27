@@ -1,4 +1,26 @@
 import type { Env, SalesData } from '@/types';
+
+interface CentraShipmentsResponse {
+  data?: {
+    shipments: CentraShipment[];
+  };
+  errors?: Array<{ message: string }>;
+}
+
+interface CentraShipment {
+  id: number;
+  number: string;
+  shippedAt: string;
+  grandTotal: {
+    value: number;
+    currency: { code: string };
+    conversionRate: number;
+  };
+  totals: {
+    quantity: number;
+    taxIncluded: { value: number };
+  };
+}
 import type { ProductSalesItem } from '@/types/top-products';
 
 interface CentraGraphQLResponse {
@@ -379,6 +401,103 @@ export class CentraConnector {
     return {
       amount: Math.round(totalAmount),
       orderCount: completedReturns.length,
+      productCount: totalQuantity,
+    };
+  }
+
+  /**
+   * Fetch shipped B2B sales based on shipment date (shippedAt)
+   * Used for revenue recognition — B2B orders are invoiced when shipped
+   */
+  async fetchShippedSales(
+    startDate: string,
+    endDate: string
+  ): Promise<SalesData> {
+    const fromDate = startDate.replace('T', ' ');
+    const toDate = endDate.replace('T', ' ');
+
+    const query = `
+      query GetShipments($from: DateTimeTz!, $to: DateTimeTz!, $page: Int!) {
+        shipments(
+          where: {
+            shippedAt: { from: $from, to: $to }
+            storeType: WHOLESALE
+            isShipped: true
+          }
+          limit: 100
+          page: $page
+        ) {
+          id
+          number
+          shippedAt
+          grandTotal {
+            value
+            currency { code }
+            conversionRate
+          }
+          totals {
+            quantity
+            taxIncluded { value }
+          }
+        }
+      }
+    `;
+
+    let allShipments: CentraShipment[] = [];
+    let page = 1;
+    let hasMore = true;
+
+    while (hasMore) {
+      const response = await fetch(this.baseUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify({
+          query,
+          variables: { from: fromDate, to: toDate, page },
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Centra GraphQL failed: ${response.status} - ${errorText}`);
+      }
+
+      const result: CentraShipmentsResponse = await response.json();
+
+      if (result.errors && result.errors.length > 0) {
+        throw new Error(`Centra GraphQL errors: ${result.errors.map((e) => e.message).join(', ')}`);
+      }
+
+      const shipments = result.data?.shipments || [];
+      allShipments = allShipments.concat(shipments);
+
+      if (shipments.length < 100) {
+        hasMore = false;
+      } else {
+        page++;
+      }
+    }
+
+    // Calculate net value: grandTotal - taxIncluded, converted to SEK
+    const totalAmount = allShipments.reduce((sum, s) => {
+      const gross = s.grandTotal?.value || 0;
+      const tax = s.totals?.taxIncluded?.value || 0;
+      const net = gross - tax;
+      const rate = s.grandTotal?.conversionRate || 1;
+      return sum + net * rate;
+    }, 0);
+
+    const totalQuantity = allShipments.reduce(
+      (sum, s) => sum + (s.totals?.quantity || 0),
+      0
+    );
+
+    return {
+      amount: Math.round(totalAmount),
+      orderCount: allShipments.length,
       productCount: totalQuantity,
     };
   }
