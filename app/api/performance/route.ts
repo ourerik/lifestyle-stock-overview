@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth0 } from '@/lib/auth0'
 import { ElasticsearchConnector } from '@/lib/connectors/elasticsearch'
-import type { CompanyId } from '@/config/companies'
+import { REAL_COMPANY_IDS, type CompanyId } from '@/config/companies'
 import type { Env } from '@/types'
 import type { ProductPerformance, PerformanceData, PerformanceSummary } from '@/types/performance'
 import { DEFAULT_AD_COST_PER_ORDER } from '@/types/ad-costs'
 
-const VALID_COMPANIES: Exclude<CompanyId, 'all'>[] = ['varg', 'sneaky-steve']
+const VALID_COMPANIES: Exclude<CompanyId, 'all'>[] = REAL_COMPANY_IDS
 
 // Simple in-memory cache
 const performanceCache: Map<string, { data: PerformanceData; cachedAt: Date }> = new Map()

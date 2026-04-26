@@ -1,17 +1,13 @@
 /// <reference types="@cloudflare/workers-types" />
 
-// Extends the CloudflareEnv global declared by @opennextjs/cloudflare with
-// this app's own bindings. Accessed via `getCloudflareContext().env.*`.
+// CloudflareEnv types are only used by the entrypoint Worker (worker/index.ts).
+// The Next.js app itself runs inside a Cloudflare Container as a normal Node
+// process and reads everything via `process.env`.
 declare global {
   interface CloudflareEnv {
-    // Project-wide R2 bucket. Keys are namespaced by company + feature, e.g.
-    //   {company}/product-media/metadata/{articleNo}.json
-    //   {company}/product-media/images/{articleNo}/{imageId}.png
-    STORAGE: R2Bucket;
-
-    // OpenAI API key for gpt-image-2 generation
-    OPEN_API_KEY: string;
+    // Container Durable Object binding (target for proxied requests)
+    APP_CONTAINER: DurableObjectNamespace
   }
 }
 
-export {};
+export {}

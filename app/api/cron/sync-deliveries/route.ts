@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { DeliverySyncService } from '@/lib/services/delivery-sync'
-import type { CompanyId } from '@/config/companies'
+import { REAL_COMPANY_IDS, type CompanyId } from '@/config/companies'
 import type { Env } from '@/types'
 
-const VALID_COMPANIES: Exclude<CompanyId, 'all'>[] = ['varg', 'sneaky-steve']
+const VALID_COMPANIES: Exclude<CompanyId, 'all'>[] = REAL_COMPANY_IDS
 
 /**
  * POST /api/cron/sync-deliveries

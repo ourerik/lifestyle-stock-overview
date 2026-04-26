@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { StockChangeSyncService } from '@/lib/services/stockchange-sync'
-import type { CompanyId } from '@/config/companies'
+import { REAL_COMPANY_IDS, type CompanyId } from '@/config/companies'
 import type { Env } from '@/types'
 
-const VALID_COMPANIES: Exclude<CompanyId, 'all'>[] = ['varg', 'sneaky-steve']
+const VALID_COMPANIES: Exclude<CompanyId, 'all'>[] = REAL_COMPANY_IDS
 
 export async function POST(request: NextRequest) {
   // Validate CRON_SECRET

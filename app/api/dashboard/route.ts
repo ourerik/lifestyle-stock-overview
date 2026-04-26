@@ -3,10 +3,10 @@ import { auth0 } from '@/lib/auth0';
 import { SalesAggregator } from '@/lib/services/sales-aggregator';
 import { getFromCache, setInCache } from '@/lib/cache/dashboard-cache';
 import { getCustomDateRange } from '@/lib/utils/date';
-import type { CompanyId } from '@/config/companies';
+import { COMPANIES, type CompanyId } from '@/config/companies';
 import type { PeriodType, ComparisonType, Env, CustomDateRange } from '@/types';
 
-const VALID_COMPANIES: CompanyId[] = ['all', 'varg', 'sneaky-steve'];
+const VALID_COMPANIES: CompanyId[] = Object.keys(COMPANIES) as CompanyId[];
 const VALID_PERIODS: PeriodType[] = [
   'last-7-days',
   'today',

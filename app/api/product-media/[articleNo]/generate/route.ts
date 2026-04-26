@@ -202,7 +202,7 @@ async function resolveSingleReference(
           `Referens #${index + 1}: global referens hittades inte (${globalMatch[1]})`,
         )
       }
-      const contentType = obj.httpMetadata?.contentType ?? 'image/png'
+      const contentType = obj.headers.get('content-type') ?? 'image/png'
       const ext = contentType.includes('jpeg') ? 'jpg' : contentType.includes('webp') ? 'webp' : 'png'
       const bytes = await obj.arrayBuffer()
       return {

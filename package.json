@@ -7,16 +7,17 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "build:worker": "opennextjs-cloudflare build",
-    "dev:worker": "opennextjs-cloudflare build && wrangler dev",
-    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy"
+    "dev:worker": "wrangler dev",
+    "deploy": "wrangler deploy"
   },
   "dependencies": {
     "@auth0/nextjs-auth0": "^4.14.0",
     "@base-ui/react": "^1.0.0",
+    "@cloudflare/containers": "^0.3.3",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
+    "aws4fetch": "^1.0.20",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
@@ -35,7 +36,6 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260424.1",
-    "@opennextjs/cloudflare": "^1.14.7",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
@@ -44,6 +44,6 @@
     "eslint-config-next": "15.5.9",
     "tailwindcss": "^4",
     "typescript": "^5",
-    "wrangler": "^4.54.0"
+    "wrangler": "^4.85.0"
   }
 }

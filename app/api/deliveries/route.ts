@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth0 } from '@/lib/auth0'
 import { ElasticsearchConnector } from '@/lib/connectors/elasticsearch'
-import type { CompanyId } from '@/config/companies'
+import { REAL_COMPANY_IDS, type CompanyId } from '@/config/companies'
 import type { Env } from '@/types'
 import type { DeliveryListItem, DeliveriesResponse, DeliverySortField } from '@/types/delivery'
 
-const VALID_COMPANIES: Exclude<CompanyId, 'all'>[] = ['varg', 'sneaky-steve']
+const VALID_COMPANIES: Exclude<CompanyId, 'all'>[] = REAL_COMPANY_IDS
 const VALID_SORT_FIELDS: DeliverySortField[] = [
   'createdAt',
   'supplier',

@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth0 } from '@/lib/auth0'
 import { FifoCalculator } from '@/lib/services/fifo-calculator'
 import { ZettleConnector } from '@/lib/connectors/zettle'
-import { COMPANIES, type CompanyId } from '@/config/companies'
+import { COMPANIES, REAL_COMPANY_IDS, type CompanyId } from '@/config/companies'
 import type { Env } from '@/types'
 import type { FifoValuationData } from '@/types/fifo'
 
-const VALID_COMPANIES: Exclude<CompanyId, 'all'>[] = ['varg', 'sneaky-steve']
+const VALID_COMPANIES: Exclude<CompanyId, 'all'>[] = REAL_COMPANY_IDS
 
 // Simple in-memory cache for valuation data
 const valuationCache: Map<string, { data: FifoValuationData; cachedAt: Date }> = new Map()

@@ -2,18 +2,33 @@
 name = "lifestyle-stock-overview"
 compatibility_date = "2024-12-30"
 compatibility_flags = ["nodejs_compat"]
-main = ".open-next/worker.js"
+main = "worker/index.ts"
 
-# Assets directory (static files)
-assets = { directory = ".open-next/assets", binding = "ASSETS" }
+[observability]
+enabled = true
+
+# =============================================================================
+# CONTAINER (where Next.js runs)
+# =============================================================================
+# The whole Next.js app runs inside a Cloudflare Container. The Worker above
+# is just a thin proxy that forwards every request to the container.
+[[containers]]
+class_name = "AppContainer"
+image = "./Dockerfile"
+max_instances = 5
+instance_type = "standard-1"
+
+[[durable_objects.bindings]]
+name = "APP_CONTAINER"
+class_name = "AppContainer"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["AppContainer"]
 
 # =============================================================================
 # ENVIRONMENT VARIABLES
 # =============================================================================
-# Non-sensitive values can be set here.
-# SECRETS must be set via Cloudflare Dashboard or `wrangler secret put <NAME>`
-# =============================================================================
-
 [vars]
 # Auth0
 APP_BASE_URL = "https://lifestyle-stock-overview.icy-bonus-6ebb.workers.dev"
@@ -24,23 +39,12 @@ SNEAKY_CENTRA_BASE_URL = "https://sneakysteve.centra.com/graphql"
 VARG_CENTRA_BASE_URL = "https://varg.centra.com/graphql"
 DISENTIS_CENTRA_BASE_URL = "https://disentis.centra.com/graphql"
 
-# =============================================================================
-# R2 BUCKETS
-# =============================================================================
-# Project-wide asset bucket. Namespaced by company + feature inside, e.g.:
-#   {company}/product-media/metadata/{articleNo}.json
-#   {company}/product-media/images/{articleNo}/{imageId}.png
-# Local dev uses the wrangler R2 simulator under .wrangler/; for prod run:
-#   wrangler r2 bucket create lifestyle-stock-overview-assets
-[[r2_buckets]]
-binding = "STORAGE"
-bucket_name = "lifestyle-stock-overview-storage"
+# R2 bucket name (the actual S3 endpoint + credentials are secrets)
+R2_BUCKET = "lifestyle-stock-overview-storage"
 
 # =============================================================================
 # SECRETS (set via Dashboard or CLI)
 # =============================================================================
-# Run these commands to set secrets:
-#
 # wrangler secret put AUTH0_SECRET
 # wrangler secret put AUTH0_ISSUER_BASE_URL
 # wrangler secret put AUTH0_CLIENT_ID
@@ -60,4 +64,11 @@ bucket_name = "lifestyle-stock-overview-storage"
 # wrangler secret put ELASTICSEARCH_API_KEY
 #
 # wrangler secret put SNEAKY_NE_PROD_PRIMARY_CONNECTION_STRING
+#
+# wrangler secret put OPEN_API_KEY
+#
+# # R2 S3-compatible credentials (create token in Dashboard → R2 → Manage R2 API Tokens):
+# wrangler secret put R2_ACCESS_KEY_ID
+# wrangler secret put R2_SECRET_ACCESS_KEY
+# wrangler secret put R2_ENDPOINT
 # =============================================================================

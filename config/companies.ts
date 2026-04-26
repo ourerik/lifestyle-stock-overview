@@ -58,6 +58,14 @@ export const COMPANIES: Record<CompanyId, CompanyConfig> = {
 
 export const COMPANY_LIST = Object.values(COMPANIES);
 
+// All registered company IDs including 'all' (used for dashboard/list endpoints).
+export const ALL_COMPANY_IDS: CompanyId[] = Object.keys(COMPANIES) as CompanyId[];
+
+// Real companies excluding the aggregate 'all' overview (used for inventory,
+// deliveries, performance, ad-costs etc. that operate on a single company).
+export const REAL_COMPANY_IDS: Exclude<CompanyId, 'all'>[] = ALL_COMPANY_IDS
+  .filter((id): id is Exclude<CompanyId, 'all'> => id !== 'all');
+
 // Feature allowlist: which companies can access the "Experiment" (product-media)
 // AI image generation feature. Used by UI menu gating AND server-side access
 // checks so we only need one allowlist to update.

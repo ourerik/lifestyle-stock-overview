@@ -2,12 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth0 } from '@/lib/auth0'
 import { InventoryAggregator } from '@/lib/services/inventory-aggregator'
 import { FifoCalculator } from '@/lib/services/fifo-calculator'
-import type { CompanyId } from '@/config/companies'
+import { REAL_COMPANY_IDS, type CompanyId } from '@/config/companies'
 import type { Env } from '@/types'
 import type { InventoryData, InventoryFetchResult } from '@/types/inventory'
 import type { FifoValuationData } from '@/types/fifo'
 
-const VALID_COMPANIES: Exclude<CompanyId, 'all'>[] = ['varg', 'sneaky-steve']
+const VALID_COMPANIES: Exclude<CompanyId, 'all'>[] = REAL_COMPANY_IDS
 
 // Simple in-memory cache for inventory data
 const inventoryCache: Map<string, { data: InventoryData; cachedAt: Date }> = new Map()

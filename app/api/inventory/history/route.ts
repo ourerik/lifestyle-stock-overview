@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth0 } from '@/lib/auth0'
 import { ElasticsearchConnector, StockHistoryItem } from '@/lib/connectors/elasticsearch'
-import type { CompanyId } from '@/config/companies'
+import { REAL_COMPANY_IDS, type CompanyId } from '@/config/companies'
 import type { Env } from '@/types'
 import type { StockHistorySeries, StockHistoryData } from '@/types/inventory'
 
-const VALID_COMPANIES: Exclude<CompanyId, 'all'>[] = ['varg', 'sneaky-steve']
+const VALID_COMPANIES: Exclude<CompanyId, 'all'>[] = REAL_COMPANY_IDS
 const VALID_DAYS = [7, 30, 90, 'all'] as const
 
 export async function GET(request: NextRequest) {

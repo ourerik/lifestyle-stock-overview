@@ -1,0 +1,15 @@
+node_modules
+.next
+.open-next
+.wrangler
+.git
+.env*
+!.env.example
+*.log
+.DS_Store
+README.md
+.vscode
+.idea
+coverage
+.turbo
+worker

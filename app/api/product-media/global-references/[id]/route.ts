@@ -31,7 +31,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'Reference not found' }, { status: 404 })
     }
 
-    const contentType = obj.httpMetadata?.contentType ?? 'application/octet-stream'
+    const contentType =
+      obj.headers.get('content-type') ?? 'application/octet-stream'
     return new NextResponse(obj.body as ReadableStream, {
       headers: {
         'Content-Type': contentType,

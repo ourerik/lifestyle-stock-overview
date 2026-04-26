@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth0 } from '@/lib/auth0';
 import { SalesAggregator } from '@/lib/services/sales-aggregator';
 import { getDateRange } from '@/lib/utils/date';
-import type { CompanyId } from '@/config/companies';
+import { COMPANIES, type CompanyId } from '@/config/companies';
 import type { Env } from '@/types';
 
-const VALID_COMPANIES: CompanyId[] = ['all', 'varg', 'sneaky-steve'];
+const VALID_COMPANIES: CompanyId[] = Object.keys(COMPANIES) as CompanyId[];
 
 export async function GET(request: NextRequest) {
   // Check authentication
