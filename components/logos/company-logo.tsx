@@ -1,6 +1,7 @@
 import { CompanyId } from '@/config/companies';
 import { VargLogo } from './varg-logo';
 import { SneakySteveLogo } from './sneaky-steve-logo';
+import { DisentisLogo } from './disentis-logo';
 import { Building2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -15,6 +16,8 @@ export function CompanyLogo({ companyId, className }: CompanyLogoProps) {
       return <VargLogo className={className} />;
     case 'sneaky-steve':
       return <SneakySteveLogo className={className} />;
+    case 'disentis':
+      return <DisentisLogo className={className} />;
     default:
       return <Building2 className={cn('h-4 w-4', className)} />;
   }

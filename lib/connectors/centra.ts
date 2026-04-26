@@ -23,6 +23,28 @@ interface CentraShipment {
 }
 import type { ProductSalesItem } from '@/types/top-products';
 
+export interface CentraDisplayItem {
+  id: number;
+  name: string;
+  status: string;
+  uri: string;
+  product: {
+    name: string;
+    productNumber: string;
+    status?: string;
+  };
+  media?: Array<{ source: { url: string } }>;
+  displayItems?: Array<{ id: number }>;
+  categories?: Array<{ name: string }>;
+}
+
+interface CentraDisplayResponse {
+  data?: {
+    displays: CentraDisplayItem[];
+  };
+  errors?: Array<{ message: string }>;
+}
+
 interface CentraGraphQLResponse {
   data?: {
     orders: CentraGraphQLOrder[];
@@ -880,5 +902,72 @@ export class CentraConnector {
         image: data.image,
       }))
       .sort((a, b) => b.quantity - a.quantity);
+  }
+
+  async fetchDisplayItems(): Promise<CentraDisplayItem[]> {
+    const query = `
+      query GetDisplays($page: Int!, $storeId: Int!) {
+        displays(
+          where: { status: [ACTIVE], storeId: [$storeId] }
+          limit: 100
+          page: $page
+        ) {
+          id
+          name
+          status
+          uri
+          product {
+            name
+            productNumber
+            status
+          }
+          media { source { url } }
+          displayItems {
+            id
+          }
+          categories { name }
+        }
+      }
+    `;
+
+    let allDisplays: CentraDisplayItem[] = [];
+    let page = 1;
+    let hasMore = true;
+
+    while (hasMore) {
+      const response = await fetch(this.baseUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify({
+          query,
+          variables: { page, storeId: 1 },
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Centra GraphQL failed: ${response.status} - ${errorText}`);
+      }
+
+      const result: CentraDisplayResponse = await response.json();
+
+      if (result.errors && result.errors.length > 0) {
+        throw new Error(`Centra GraphQL errors: ${result.errors.map((e) => e.message).join(', ')}`);
+      }
+
+      const displays = result.data?.displays || [];
+      allDisplays = allDisplays.concat(displays);
+
+      if (displays.length < 100) {
+        hasMore = false;
+      } else {
+        page++;
+      }
+    }
+
+    return allDisplays;
   }
 }

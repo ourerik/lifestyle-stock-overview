@@ -1,10 +1,10 @@
 'use client';
 
-import { LayoutDashboard, Package, Truck, BarChart3, Settings, ChevronDown, LogOut, User } from 'lucide-react';
+import { LayoutDashboard, Package, Truck, BarChart3, Settings, ChevronDown, LogOut, User, ArrowUpDown, Sparkles } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useUser } from '@auth0/nextjs-auth0/client';
 import { useRoles } from '@/hooks/use-roles';
-import { COMPANY_LIST, COMPANIES, type CompanyId } from '@/config/companies';
+import { COMPANY_LIST, COMPANIES, canUseProductMedia, type CompanyId } from '@/config/companies';
 import { CompanyLogo } from '@/components/logos';
 import {
   Sidebar,
@@ -168,6 +168,34 @@ export function AppSidebar() {
                       </a>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
+                  {currentCompany === 'sneaky-steve' && (
+                    <SidebarMenuItem>
+                      <SidebarMenuButton
+                        asChild
+                        isActive={pathname.includes('/product-ranking')}
+                        tooltip="Produktranking"
+                      >
+                        <a href={`/${currentCompany}/product-ranking`}>
+                          <ArrowUpDown className="h-4 w-4" />
+                          <span>Produktranking</span>
+                        </a>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )}
+                  {canUseProductMedia(currentCompany) && (
+                    <SidebarMenuItem>
+                      <SidebarMenuButton
+                        asChild
+                        isActive={pathname.includes('/product-media')}
+                        tooltip="Experiment"
+                      >
+                        <a href={`/${currentCompany}/product-media`}>
+                          <Sparkles className="h-4 w-4" />
+                          <span>Experiment</span>
+                        </a>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )}
                   <SidebarMenuItem>
                     <SidebarMenuButton
                       asChild

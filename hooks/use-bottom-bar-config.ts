@@ -32,6 +32,8 @@ const AVAILABLE_PAGES: AvailablePage[] = [
   { id: 'deliveries', icon: 'Truck', label: 'Inleveranser', href: '/{company}/deliveries', requiresCompany: true },
   { id: 'performance', icon: 'BarChart3', label: 'Prestation', href: '/{company}/performance', requiresCompany: true },
   { id: 'settings', icon: 'Settings', label: 'Inställningar', href: '/{company}/settings/ad-costs', requiresCompany: true },
+  { id: 'product-ranking', icon: 'ArrowUpDown', label: 'Produktranking', href: '/{company}/product-ranking', requiresCompany: true },
+  { id: 'product-media', icon: 'Sparkles', label: 'Experiment', href: '/{company}/product-media', requiresCompany: true },
 ];
 
 export function useBottomBarConfig(): {

@@ -11,6 +11,9 @@ export interface Env {
   ELASTICSEARCH_URL?: string;
   ELASTICSEARCH_API_KEY?: string;
 
+  // OpenAI (image generation)
+  OPEN_API_KEY?: string;
+
   // Dynamic access for company-specific secrets
   [key: string]: string | undefined;
 }

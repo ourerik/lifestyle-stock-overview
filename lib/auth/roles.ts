@@ -1,14 +1,15 @@
 import type { CompanyId } from '@/config/companies';
 
 // Available roles
-export type Role = 'Admin' | 'Basic' | 'Sneaky Steve' | 'Varg';
+export type Role = 'Admin' | 'Basic' | 'Sneaky Steve' | 'Varg' | 'Disentis';
 
 // Role to company access mapping
 export const ROLE_COMPANY_ACCESS: Record<Role, CompanyId[]> = {
-  Admin: ['all', 'varg', 'sneaky-steve'],
-  Basic: ['all', 'varg', 'sneaky-steve'],
+  Admin: ['all', 'varg', 'sneaky-steve', 'disentis'],
+  Basic: ['all', 'varg', 'sneaky-steve', 'disentis'],
   Varg: ['varg'],
   'Sneaky Steve': ['sneaky-steve'],
+  Disentis: ['disentis'],
 };
 
 // Roles that grant access to the overview page (/)

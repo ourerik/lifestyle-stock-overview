@@ -61,31 +61,38 @@ export interface ESPurchaseDelivery {
   error: boolean
 }
 
-type CompanyId = 'varg' | 'sneaky-steve'
+type CompanyId = 'varg' | 'sneaky-steve' | 'disentis'
 
+// ES index prefix per company. Disentis does not have ES indices provisioned
+// yet — calls will 404 at runtime, which is caught by sync wrappers.
 const COMPANY_INDEX_PREFIX: Record<CompanyId, string> = {
   'varg': 'varg_stock',
   'sneaky-steve': 'sneaky_stock',
+  'disentis': 'disentis_stock',
 }
 
 const COMPANY_PO_DELIVERY_INDEX: Record<CompanyId, string> = {
   'varg': 'varg_purchasing_order_deliveries_v2',
   'sneaky-steve': 'sneaky_purchasing_order_deliveries_v2',
+  'disentis': 'disentis_purchasing_order_deliveries_v2',
 }
 
 const COMPANY_STOCK_CHANGES_INDEX: Record<CompanyId, string> = {
   'varg': 'varg_stock_changes_v1',
   'sneaky-steve': 'sneaky_stock_changes_v1',
+  'disentis': 'disentis_stock_changes_v1',
 }
 
 const COMPANY_SALES_ECOM_INDEX: Record<CompanyId, string> = {
   'varg': 'varg_sales_ecom',
   'sneaky-steve': 'sneaky_sales_ecom',
+  'disentis': 'disentis_sales_ecom',
 }
 
 const COMPANY_AD_COSTS_INDEX: Record<CompanyId, string> = {
   'varg': 'varg_ad_costs',
   'sneaky-steve': 'sneaky_ad_costs',
+  'disentis': 'disentis_ad_costs',
 }
 
 // Stock change document stored in Elasticsearch
@@ -1223,5 +1230,36 @@ export class ElasticsearchConnector {
     }
 
     return { indexed: indexedCount, errors: errorCount }
+  }
+
+  async updateDisplayRanks(
+    ranks: Array<{ id: string; defaultRank: number }>,
+    indices: string[]
+  ): Promise<Array<{ index: string; updated: number }>> {
+    // Build a map of displayItemId -> rank value
+    const ranksMap: Record<string, number> = {}
+    for (const rank of ranks) {
+      ranksMap[rank.id] = rank.defaultRank
+    }
+
+    const displayItemIds = ranks.map((r) => r.id)
+
+    const results: Array<{ index: string; updated: number }> = []
+
+    for (const index of indices) {
+      const result = await this.request<{ updated: number }>(`/${index}/_update_by_query`, {
+        query: {
+          terms: { displayItemId: displayItemIds },
+        },
+        script: {
+          source: 'ctx._source.defaultRank = params.ranks[ctx._source.displayItemId]',
+          params: { ranks: ranksMap },
+        },
+      })
+
+      results.push({ index, updated: result.updated })
+    }
+
+    return results
   }
 }

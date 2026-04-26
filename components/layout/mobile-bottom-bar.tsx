@@ -16,11 +16,13 @@ import {
   Settings,
   Home,
   Circle,
+  ArrowUpDown,
+  Sparkles,
   type LucideIcon,
 } from 'lucide-react';
 import { useBottomBarConfig, type BottomBarSlot, type AvailablePage } from '@/hooks/use-bottom-bar-config';
 import { useRoles } from '@/hooks/use-roles';
-import { COMPANY_LIST, COMPANIES, type CompanyId } from '@/config/companies';
+import { COMPANY_LIST, COMPANIES, canUseProductMedia, type CompanyId } from '@/config/companies';
 import { CompanyLogo } from '@/components/logos';
 import {
   Sheet,
@@ -45,6 +47,8 @@ const iconMap: Record<string, LucideIcon> = {
   Settings,
   Home,
   Circle,
+  ArrowUpDown,
+  Sparkles,
 };
 
 function getIcon(iconName: string): LucideIcon {
@@ -241,6 +245,12 @@ export function MobileBottomBar() {
       { icon: 'Truck', label: 'Inleveranser', href: `/${currentCompany}/deliveries`, isActive: pathname.includes('/deliveries') },
       { icon: 'BarChart3', label: 'Prestation', href: `/${currentCompany}/performance`, isActive: pathname.includes('/performance') },
       { icon: 'Settings', label: 'Installningar', href: `/${currentCompany}/settings/ad-costs`, isActive: pathname.includes('/settings') },
+      ...(currentCompany === 'sneaky-steve' ? [
+        { icon: 'ArrowUpDown', label: 'Produktranking', href: `/${currentCompany}/product-ranking`, isActive: pathname.includes('/product-ranking') },
+      ] : []),
+      ...(canUseProductMedia(currentCompany) ? [
+        { icon: 'Sparkles', label: 'Experiment', href: `/${currentCompany}/product-media`, isActive: pathname.includes('/product-media') },
+      ] : []),
     ] : []),
   ];
 

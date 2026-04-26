@@ -22,6 +22,19 @@ AUTH0_DOMAIN = "fourrun.eu.auth0.com"
 # Centra API base URLs (not secrets)
 SNEAKY_CENTRA_BASE_URL = "https://sneakysteve.centra.com/graphql"
 VARG_CENTRA_BASE_URL = "https://varg.centra.com/graphql"
+DISENTIS_CENTRA_BASE_URL = "https://disentis.centra.com/graphql"
+
+# =============================================================================
+# R2 BUCKETS
+# =============================================================================
+# Project-wide asset bucket. Namespaced by company + feature inside, e.g.:
+#   {company}/product-media/metadata/{articleNo}.json
+#   {company}/product-media/images/{articleNo}/{imageId}.png
+# Local dev uses the wrangler R2 simulator under .wrangler/; for prod run:
+#   wrangler r2 bucket create lifestyle-stock-overview-assets
+[[r2_buckets]]
+binding = "STORAGE"
+bucket_name = "lifestyle-stock-overview-storage"
 
 # =============================================================================
 # SECRETS (set via Dashboard or CLI)
@@ -41,6 +54,10 @@ VARG_CENTRA_BASE_URL = "https://varg.centra.com/graphql"
 # wrangler secret put VARG_ZETTLE_CLIENT_ID
 # wrangler secret put VARG_ZETTLE_API_KEY
 #
+# wrangler secret put DISENTIS_CENTRA_API_KEY
+#
 # wrangler secret put ELASTICSEARCH_URL
 # wrangler secret put ELASTICSEARCH_API_KEY
+#
+# wrangler secret put SNEAKY_NE_PROD_PRIMARY_CONNECTION_STRING
 # =============================================================================
